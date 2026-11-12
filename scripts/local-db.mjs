@@ -2,7 +2,7 @@ import { MongoMemoryReplSet } from "mongodb-memory-server";
 
 const rs = await MongoMemoryReplSet.create({
   replSet: { count: 1, storageEngine: "wiredTiger" },
-  instanceOpts: [{ port: 27017 }],
+  instanceOpts: [{ port: 27017, launchTimeout: 60000 }],
 });
 console.log("Mongo ready:", rs.getUri("teams_dev"));
 process.on("SIGINT", async () => {

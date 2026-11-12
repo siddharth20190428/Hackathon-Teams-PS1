@@ -1,0 +1,35 @@
+{
+  "name": "hackathon-teams-ps1",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --env-file=.env src/server.js",
+    "seed": "node --env-file=.env scripts/seed.js",
+    "test": "vitest run",
+    "test:race": "vitest run test/race.test.js",
+    "db:local": "node scripts/local-db.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/siddharth20190428/Hackathon-Teams-PS1.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/siddharth20190428/Hackathon-Teams-PS1/issues"
+  },
+  "homepage": "https://github.com/siddharth20190428/Hackathon-Teams-PS1#readme",
+  "dependencies": {
+    "express": "^5.3.0",
+    "mongodb": "^7.8.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.3.0",
+    "supertest": "^7.3.2",
+    "vitest": "^5.1.0"
+  }
+}
