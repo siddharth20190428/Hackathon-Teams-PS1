@@ -9,6 +9,7 @@
     "test": "vitest run",
     "test:race": "vitest run test/race.test.js",
     "load": "mkdir -p reports && k6 run load/board.js",
+    "explain:board": "node --env-file=.env scripts/explain-board.js",
     "db:local": "node scripts/local-db.mjs"
   },
   "repository": {

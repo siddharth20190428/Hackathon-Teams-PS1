@@ -11,4 +11,14 @@ export async function ensureCoreIndexes(db) {
   // One team per person per hackathon: the database enforces it.
   await db.collection('memberships').createIndex({ hackathonId: 1, userId: 1 }, { unique: true });
   await db.collection('memberships').createIndex({ teamId: 1, joinedAt: 1 });
+
+  // Board read path: only open teams, newest first. A partial index keeps it small
+  // and matches the board query's filter and sort exactly.
+  await db.collection('teams').createIndex(
+    { hackathonId: 1, createdAt: -1, _id: -1 },
+    {
+      name: 'board_open_teams',
+      partialFilterExpression: { lookingForTeammates: true, openSeats: { $gt: 0 } },
+    },
+  );
 }
