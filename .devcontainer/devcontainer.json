@@ -1,0 +1,13 @@
+{
+  "name": "teams-ps1",
+  "forwardPorts": [3000, 5173],
+  "postCreateCommand": "[ -f package-lock.json ] && npm ci || true",
+  "secrets": {
+    "MONGODB_URI_ATLAS": {
+      "description": "Atlas M0 connection string for the teams_dev database"
+    }
+  },
+  "customizations": {
+    "vscode": { "extensions": ["mongodb.mongodb-vscode"] }
+  }
+}
