@@ -1,6 +1,7 @@
 import { MongoClient } from 'mongodb';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../src/app.js';
+import { ensureCoreIndexes } from '../src/indexes.js';
 
 const URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/?replicaSet=rs0';
 
@@ -8,11 +9,12 @@ export async function setup() {
   const client = new MongoClient(URI);
   await client.connect();
   const db = client.db(`test_${randomUUID().slice(0, 8)}`);
+  await ensureCoreIndexes(db);
   await db
     .collection('hackathons')
     .insertOne({ _id: 'h1', name: 'Test Hack', minTeamSize: 2, maxTeamSize: 4 });
 
-  const server = createApp(db).listen(0);
+  const server = createApp(db, client).listen(0);
   const base = `http://127.0.0.1:${server.address().port}`;
 
   const call = async (method, path, userId, body) => {

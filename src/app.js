@@ -1,7 +1,7 @@
 import express from 'express';
 import { createTeam, joinTeam, getBoard, getTeam } from './teams.js';
 
-export function createApp(db) {
+export function createApp(db, client) {
   const app = express();
   app.use(express.json());
   app.get('/healthz', (req, res) => res.json({ ok: true }));
@@ -23,7 +23,7 @@ export function createApp(db) {
   app.post(
     '/hackathons/:hid/teams',
     wrap(async (req, res) => {
-      const team = await createTeam(db, {
+      const team = await createTeam(db, client, {
         hackathonId: req.params.hid,
         userId: req.userId,
         name: req.body?.name,
@@ -35,7 +35,7 @@ export function createApp(db) {
   app.post(
     '/teams/:id/join',
     wrap(async (req, res) => {
-      res.status(201).json(await joinTeam(db, { teamId: req.params.id, userId: req.userId }));
+      res.status(201).json(await joinTeam(db, client, { teamId: req.params.id, userId: req.userId }));
     }),
   );
 

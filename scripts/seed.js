@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import { connect } from '../src/db.js';
 import { checkInvariants } from '../src/invariants.js';
+import { ensureCoreIndexes } from '../src/indexes.js';
 
 const USERS = Number(process.env.SEED_USERS ?? 10000);
 const TEAMS = Number(process.env.SEED_TEAMS ?? 2000);
@@ -21,6 +22,7 @@ if (!/dev|seed/.test(db.databaseName)) {
   throw new Error(`Refusing to wipe database "${db.databaseName}"`);
 }
 await db.dropDatabase();
+await ensureCoreIndexes(db);
 
 await db
   .collection('hackathons')

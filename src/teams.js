@@ -1,18 +1,19 @@
 import { ObjectId } from 'mongodb';
-
-const httpError = (status, code) => Object.assign(new Error(code), { status, code });
+import { httpError } from './errors.js';
+import { runTransaction } from './tx.js';
 
 const toId = (s) => {
   if (!ObjectId.isValid(s)) throw httpError(404, 'NOT_FOUND');
   return new ObjectId(s);
 };
 
-export async function createTeam(db, { hackathonId, userId, name }) {
+const isDuplicateKey = (err) => err?.code === 11000;
+
+export async function createTeam(db, client, { hackathonId, userId, name }) {
   const hack = await db.collection('hackathons').findOne({ _id: hackathonId });
   if (!hack) throw httpError(404, 'HACKATHON_NOT_FOUND');
   if (typeof name !== 'string' || !name.trim()) throw httpError(400, 'INVALID_NAME');
-  const already = await db.collection('memberships').findOne({ hackathonId, userId });
-  if (already) throw httpError(409, 'ALREADY_IN_TEAM');
+
   const team = {
     _id: new ObjectId(),
     hackathonId,
@@ -26,38 +27,53 @@ export async function createTeam(db, { hackathonId, userId, name }) {
     version: 1,
     createdAt: new Date(),
   };
-  await db.collection('teams').insertOne(team);
-  await db.collection('memberships').insertOne({
-    hackathonId,
-    teamId: team._id,
-    userId,
-    role: 'leader',
-    joinedAt: new Date(),
-  });
+
+  try {
+    await runTransaction(client, async (session) => {
+      // Membership first: the unique index rejects a second team for the same person.
+      await db.collection('memberships').insertOne(
+        { hackathonId, teamId: team._id, userId, role: 'leader', joinedAt: new Date() },
+        { session },
+      );
+      await db.collection('teams').insertOne(team, { session });
+    });
+  } catch (err) {
+    if (isDuplicateKey(err)) throw httpError(409, 'ALREADY_IN_TEAM');
+    throw err;
+  }
   return team;
 }
 
-export async function joinTeam(db, { teamId, userId }) {
+export async function joinTeam(db, client, { teamId, userId }) {
   const _id = toId(teamId);
-  const team = await db.collection('teams').findOne({ _id });
-  if (!team) throw httpError(404, 'NOT_FOUND');
-  const already = await db
-    .collection('memberships')
-    .findOne({ hackathonId: team.hackathonId, userId });
-  if (already) throw httpError(409, 'ALREADY_IN_TEAM');
-  if (team.openSeats <= 0) throw httpError(409, 'TEAM_FULL');
-  // NAIVE ON PURPOSE (I0): the checks above and the writes below are not atomic.
-  await db.collection('memberships').insertOne({
-    hackathonId: team.hackathonId,
-    teamId: _id,
-    userId,
-    role: 'member',
-    joinedAt: new Date(),
-  });
-  await db
-    .collection('teams')
-    .updateOne({ _id }, { $inc: { memberCount: 1, openSeats: -1, version: 1 } });
-  return { teamId, userId };
+  try {
+    return await runTransaction(client, async (session) => {
+      // Claim the seat. The filter and the decrement are ONE atomic operation:
+      // if openSeats is already 0 the filter matches nothing and we get null.
+      const team = await db.collection('teams').findOneAndUpdate(
+        { _id, openSeats: { $gt: 0 } },
+        { $inc: { memberCount: 1, openSeats: -1, version: 1 } },
+        { returnDocument: 'after', session },
+      );
+
+      if (!team) {
+        const exists = await db.collection('teams').findOne({ _id }, { session, projection: { _id: 1 } });
+        if (!exists) throw httpError(404, 'NOT_FOUND');
+        throw httpError(409, 'TEAM_FULL');
+      }
+
+      // The unique (hackathonId, userId) index rejects a second team for this person.
+      // If it does, the whole transaction aborts and the seat claim above is rolled back.
+      await db.collection('memberships').insertOne(
+        { hackathonId: team.hackathonId, teamId: _id, userId, role: 'member', joinedAt: new Date() },
+        { session },
+      );
+      return { teamId, userId };
+    });
+  } catch (err) {
+    if (isDuplicateKey(err)) throw httpError(409, 'ALREADY_IN_TEAM');
+    throw err;
+  }
 }
 
 export async function getBoard(db, { hackathonId, limit = 20 }) {
