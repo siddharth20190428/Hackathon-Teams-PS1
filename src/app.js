@@ -1,5 +1,5 @@
 import express from 'express';
-import { createTeam, joinTeam, getBoard, getTeam } from './teams.js';
+import { createTeam, joinTeam, leaveTeam, removeMember, getBoard, getTeam } from './teams.js';
 
 export function createApp(db, client) {
   const app = express();
@@ -36,6 +36,26 @@ export function createApp(db, client) {
     '/teams/:id/join',
     wrap(async (req, res) => {
       res.status(201).json(await joinTeam(db, client, { teamId: req.params.id, userId: req.userId }));
+    }),
+  );
+
+  app.post(
+    '/teams/:id/leave',
+    wrap(async (req, res) => {
+      res.json(await leaveTeam(db, client, { teamId: req.params.id, userId: req.userId }));
+    }),
+  );
+
+  app.delete(
+    '/teams/:id/members/:uid',
+    wrap(async (req, res) => {
+      res.json(
+        await removeMember(db, client, {
+          teamId: req.params.id,
+          actorId: req.userId,
+          targetUserId: req.params.uid,
+        }),
+      );
     }),
   );
 

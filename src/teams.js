@@ -91,3 +91,69 @@ export async function getTeam(db, { teamId }) {
   if (!team) throw httpError(404, 'NOT_FOUND');
   return team;
 }
+
+export async function leaveTeam(db, client, { teamId, userId }) {
+  const _id = toId(teamId);
+  return runTransaction(client, async (session) => {
+    const left = await db.collection('memberships').findOneAndDelete({ teamId: _id, userId }, { session });
+    if (!left) {
+      const exists = await db.collection('teams').findOne({ _id }, { session, projection: { _id: 1 } });
+      throw httpError(404, exists ? 'NOT_MEMBER' : 'NOT_FOUND');
+    }
+
+    // Every change to a team goes through its one document, so concurrent joins,
+    // leaves and removals on the same team are serialized by the database.
+    const team = await db.collection('teams').findOneAndUpdate(
+      { _id },
+      { $inc: { memberCount: -1, openSeats: 1, version: 1 } },
+      { returnDocument: 'after', session },
+    );
+    if (!team) throw new Error(`membership without a team: ${teamId}`);
+
+    if (team.memberCount === 0) {
+      await db.collection('teams').deleteOne({ _id }, { session });
+      return { teamId, userId, teamDeleted: true };
+    }
+
+    if (team.leaderId === userId) {
+      // Leader succession: the remaining member who joined earliest.
+      const next = await db
+        .collection('memberships')
+        .find({ teamId: _id }, { session })
+        .sort({ joinedAt: 1, _id: 1 })
+        .limit(1)
+        .next();
+      await db
+        .collection('teams')
+        .updateOne({ _id }, { $set: { leaderId: next.userId, leaderName: next.userId } }, { session });
+      await db.collection('memberships').updateOne({ _id: next._id }, { $set: { role: 'leader' } }, { session });
+      return { teamId, userId, teamDeleted: false, newLeaderId: next.userId };
+    }
+
+    return { teamId, userId, teamDeleted: false };
+  });
+}
+
+export async function removeMember(db, client, { teamId, actorId, targetUserId }) {
+  const _id = toId(teamId);
+  if (actorId === targetUserId) throw httpError(400, 'USE_LEAVE');
+  return runTransaction(client, async (session) => {
+    // The leader check is part of the atomic filter, so a leadership change that
+    // happens mid-flight cannot be bypassed.
+    const team = await db.collection('teams').findOneAndUpdate(
+      { _id, leaderId: actorId },
+      { $inc: { memberCount: -1, openSeats: 1, version: 1 } },
+      { returnDocument: 'after', session },
+    );
+    if (!team) {
+      const exists = await db.collection('teams').findOne({ _id }, { session, projection: { _id: 1 } });
+      throw httpError(exists ? 403 : 404, exists ? 'NOT_LEADER' : 'NOT_FOUND');
+    }
+    const removed = await db
+      .collection('memberships')
+      .findOneAndDelete({ teamId: _id, userId: targetUserId }, { session });
+    // Not a member: abort, which rolls back the decrement above.
+    if (!removed) throw httpError(404, 'NOT_MEMBER');
+    return { teamId, removed: targetUserId };
+  });
+}
