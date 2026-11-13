@@ -20,6 +20,7 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Idempotency keys on every write, audit log per team | Done |
 | Rate limits, input validation (zod) | Done: in-memory limits on login, auth and invite-code guesses; strict schemas |
 | Live board updates (SSE) | Done: a "board changed" signal; the client re-reads the board |
+| Deployment (Render + Atlas), smoke test | Config and script written; not yet run against a live URL. See [docs/DEPLOY.md](docs/DEPLOY.md) |
 | Teammate suggestions, React UI | Not built |
 | CI | Workflow included; first run to be confirmed |
 | Live deployment | Not deployed yet |

@@ -1,0 +1,24 @@
+# Render blueprint: one web service on the free plan, backed by MongoDB Atlas.
+# Exactly ONE instance: the board cache, the live-update streams and the rate limits live in
+# process memory, so do not scale this service out (see docs/DEPLOY.md and DECISIONS D25).
+services:
+  - type: web
+    name: hackathon-teams
+    runtime: node
+    plan: free
+    region: singapore # pick the region closest to your Atlas cluster
+    buildCommand: npm ci --omit=dev
+    startCommand: node src/server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production # session cookies get the Secure flag
+      - key: TRUST_PROXY
+        value: "1" # one proxy (Render's) in front: req.ip is the client, rate limits work
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false # set in the dashboard; never commit it

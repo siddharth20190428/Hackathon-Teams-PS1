@@ -26,6 +26,9 @@ In-memory fixed windows: auth per IP, login per email, invite-code attempts per 
 ## D24. Live updates are a signal, not data
 SSE carries only a version number; the client re-reads the cached board. This keeps one rendering path for the board and one place where staleness is controlled (the cache invalidation). Events are published after the cache is invalidated, coalesced over 100 ms, and bounded by per-user and total stream caps. Rejected: pushing board diffs (a second read model that has to be kept correct under races) and WebSockets (two-way, not needed). Limit: in-process, so single instance, like the board cache.
 
+## D25. Deployment: Render free web service plus Atlas M0
+One instance, on purpose. The board cache (D20), the live-update streams (D24) and the rate limits (D7) live in process memory, so a second instance would serve stale boards and miss events. Render gives git-push deploys, TLS and a health check for free; Atlas M0 is the free database that supports transactions. Costs accepted: the instance sleeps when idle (30 to 60 s to wake), it has a small CPU share (sign-up and login are slow because scrypt is deliberately expensive), and Atlas must allow `0.0.0.0/0` because Render's free instances have no fixed address (the protection is a long database password and TLS). Atlas M0 caps operations at about 100 per second, so load tests run locally and the deployment gets a smoke test only. Shutdown handles SIGTERM: stop taking requests, close the live streams, close the database connection, with a hard exit after 10 s so a deploy never hangs. Scaling out later needs change streams for the cache and the event hub, and a shared store for rate limits.
+
 ## D8. Invite codes
 50-bit codes from `crypto.randomBytes`, Crockford base32, unique, expiring (hackathon TTL, 48 h default), regenerable, case-insensitive with look-alike characters mapped. Stored in plain text so the leader can view them.
 
