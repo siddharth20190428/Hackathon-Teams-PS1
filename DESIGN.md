@@ -68,7 +68,7 @@ A checker (`src/invariants.js`) runs after every concurrency test and at the end
 
 ## 6. Read path
 
-The board query filters open teams in one hackathon, sorted newest first, limited to 20. A partial index on exactly that filter turned a collection scan of 2,000 documents into an index scan of 20 and raised throughput about three times (see PERFORMANCE.md). The board and the public team view exclude invite fields. Not built: cursor pagination and the board cache.
+The board query filters open teams in one hackathon, sorted newest first, limited to 20. A partial index on exactly that filter turned a collection scan of 2,000 documents into an index scan of 20 and raised throughput about three times (see PERFORMANCE.md). The board and the public team view exclude invite fields. The serialized board response is cached in process for 2 seconds, shared between concurrent requests and invalidated by every successful write (DECISIONS.md D20). Not built: cursor pagination.
 
 ## 7. Security as built
 
@@ -87,10 +87,11 @@ The board query filters open teams in one hackathon, sorted newest first, limite
 | Invite codes stored in plain text | A database leak exposes live codes. Low impact, and the leader needs to read them |
 | Tests run on a single-node replica set | A multi-node cluster with majority writes will be slower |
 | Free Atlas M0 caps operations at about 100 per second | The deployed site cannot serve the graded load without a cache; the p95 evidence is local |
+| The board cache lives in process memory | Single instance only; if another process wrote, staleness is bounded by the 2 s TTL |
 
 ## 9. Not built yet
 
-Join requests, real authentication, idempotency keys, audit log, rate limits, input validation with a schema library, live updates, teammate suggestions, the UI, the board cache, deployment.
+Join requests, real authentication, idempotency keys, audit log, rate limits, input validation with a schema library, live updates, teammate suggestions, the UI, deployment.
 
 ## 10. With one more week
 

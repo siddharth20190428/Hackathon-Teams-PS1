@@ -14,7 +14,7 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Create team, leave, remove member, leader succession, last member deletes the team | Done |
 | Invite codes (expiry, regenerate, hidden from public views) | Done |
 | Looking-for-teammates board | Done for the first page (20 teams); cursor pagination not built |
-| Board p95 under 200 ms at 100 users | Not met at the latest measurement (207 ms); board cache is next. See [PERFORMANCE.md](PERFORMANCE.md) |
+| Board p95 under 200 ms at 100 users | Met in 6 of 7 runs after the index (p95 150 to 207 ms) but with margins as thin as 2%. An in-process board cache was added to make it robust and has not been measured yet. See [PERFORMANCE.md](PERFORMANCE.md) |
 | Join requests (request, accept, decline, cancel) | Not built |
 | Real authentication | Not built. A temporary `x-user-id` header names the caller |
 | Idempotency keys, audit log, rate limits, input validation library | Not built |
@@ -64,6 +64,7 @@ curl -s -H 'x-user-id: alice' localhost:3000/hackathons/h1/board
 | Command | What it does |
 |---|---|
 | `npm start` | Runs the API on `PORT` (default 3000) |
+| `BOARD_CACHE_TTL_MS=0 npm start` | Same, with the board cache off (default TTL is 2000 ms) |
 | `npm run seed` | Wipes and reseeds the database named in `MONGODB_URI`, then checks invariants |
 | `npm test` | Runs the full test suite (needs the MongoDB container running) |
 | `RACE_ROUNDS=20 npm run test:race` | Runs the 50-way race test for 20 rounds instead of 5 |
@@ -108,6 +109,7 @@ src/tx.js           Transaction helper
 src/indexes.js      The indexes the rules depend on
 src/invariants.js   Consistency checker used by tests and the seed script
 src/inviteCodes.js  Invite code generation and normalization
+src/boardCache.js   In-process cache for the board response
 scripts/seed.js     Seed data and invariant check
 load/board.js       k6 load test
 test/               Vitest suites (race, join, leave, invite)

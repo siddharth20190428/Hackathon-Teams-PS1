@@ -21,7 +21,7 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-26 tests in 4 files.
+36 tests in 6 files.
 
 | File | Tests |
 |---|---|
@@ -29,6 +29,8 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 | `test/join.test.js` | T2: one user joins 20 teams at once and ends up in exactly one. T4 (partly): parallel create-team by one user makes one team and no orphan. T7: a full team returns `TEAM_FULL` and changes nothing |
 | `test/leave.test.js` | T16 leader succession. T17 last member deletes the team and frees the person. Non-member leave. T12 non-leader cannot remove. Leader removes a member, who can then join elsewhere. Leader cannot remove self. Removing a non-member rolls the count back. T18 last member leaves while someone joins (20 rounds). Two members leave at once (10 rounds). Removing a member while they leave (10 rounds) |
 | `test/invite.test.js` | Code format and uniqueness (2,000 codes). Normalization. Default 48 h expiry. Correct code in any case. T9 wrong and malformed codes, including operator-injection payloads. T8 expired code. Full team. Already in a team. Direct join by id is gone. Codes never appear on the board or team view. Only the leader can read or regenerate the code. Regeneration invalidates the old code |
+| `test/boardCache.test.js` | Unit tests, no database: concurrent misses share one load; TTL expiry with a fake clock; invalidation drops values; a load running during an invalidation is not stored; errors are not cached; TTL 0 disables the cache; the entry cap evicts |
+| `test/board.test.js` | A new team is on the board immediately after creation, even after a cached read; a team leaves the board when it fills and returns when someone leaves; a deleted team disappears at once |
 
 ## Not covered yet
 
