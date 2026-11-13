@@ -9,9 +9,14 @@ import {
   getBoard,
   getTeam,
 } from './teams.js';
+import { createBoardCache } from './boardCache.js';
 
-export function createApp(db, client) {
+const BOARD_LIMIT = 20;
+
+export function createApp(db, client, options = {}) {
+  const boardCache = options.boardCache ?? createBoardCache();
   const app = express();
+  app.set('etag', false); // the cached board body is served as is
   app.use(express.json());
   app.get('/healthz', (req, res) => res.json({ ok: true }));
 
@@ -19,6 +24,18 @@ export function createApp(db, client) {
   app.use((req, res, next) => {
     req.userId = req.get('x-user-id');
     if (!req.userId) return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    next();
+  });
+
+  // Any successful write may change the board, so drop the cache just before answering.
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') {
+      const json = res.json.bind(res);
+      res.json = (body) => {
+        if (res.statusCode < 400) boardCache.invalidate();
+        return json(body);
+      };
+    }
     next();
   });
 
@@ -91,7 +108,12 @@ export function createApp(db, client) {
   app.get(
     '/hackathons/:hid/board',
     wrap(async (req, res) => {
-      res.json(await getBoard(db, { hackathonId: req.params.hid }));
+      // The board has no per-user content, so one cached body serves everyone.
+      const hackathonId = req.params.hid;
+      const body = await boardCache.get(`${hackathonId}:${BOARD_LIMIT}`, async () =>
+        JSON.stringify(await getBoard(db, { hackathonId, limit: BOARD_LIMIT })),
+      );
+      res.type('json').send(body);
     }),
   );
 

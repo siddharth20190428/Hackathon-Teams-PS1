@@ -59,5 +59,9 @@ Versions v1 to v3 let any user join any team with a free seat by its id, bypassi
 ## D19. Invite codes hidden from public views
 The board and the team view exclude invite fields; only the leader can read the code. A test asserts that neither the field name nor the code value appears.
 
-## D20. Board cache moves up
-Rule agreed after the 60-second runs: if p95 is above 200 ms, or the margin is under 10%, the cache comes next. The v4 smoke run measured 207.1 ms, so an in-process cache with a short TTL and invalidation on writes is the next change. Cost: single instance only, and the board can be up to the TTL stale.
+## D20. Board cache
+Rule agreed after the 60-second runs: if p95 is above 200 ms, or the margin is under 10%, the cache comes next. Evidence: after the index, p95 ranged from 150 to 207 ms across seven runs, with margins of 2% and 3% in two of them and one failure (207.1 ms). Three runs at v4 (207.1, 195.5 and 162.1 ms) showed that the spread is mostly run-to-run noise rather than a regression, but a pass that depends on luck is not a pass.
+
+What was built: an in-process cache of the serialized board response (TTL 2 s by default; `BOARD_CACHE_TTL_MS=0` turns it off). Concurrent misses share one database load. Every successful write (any non-GET request answered with a status below 400) invalidates the whole cache just before the response is sent, and a load that was already running when the invalidation happened is not stored, so a stale read cannot outlive a write. At most 1,000 keys are kept, so random hackathon ids in the URL cannot grow it without bound. The board has no per-user content, so one cached body serves everyone. It also keeps the deployed site far below the Atlas M0 limit of about 100 operations per second.
+
+Cost: single instance only. Another process would not see our invalidations; the TTL bounds the staleness, and change streams are the upgrade. Status: built, not yet measured.

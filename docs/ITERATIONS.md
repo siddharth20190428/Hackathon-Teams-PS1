@@ -40,7 +40,13 @@ The project was built in small patches. Each one was run against the tests, and 
 
 **Why:** joining by team id let anyone join any team with a free seat, bypassing the invite mechanism, and the board returned whole team documents, which would have exposed invite codes. Both were found while designing codes.
 **What:** invite codes (50 bits, expiring, regenerable, case-insensitive), a join-by-code endpoint, leader-only code view and regeneration, removal of the open join route, and a projection that hides invite fields from the board and the team view. The existing tests now join through codes, so the race is still run against the real join path.
-**Result:** 26 tests green. The board smoke run measured p95 207.1 ms, above the threshold, so the board cache was moved up (DECISIONS.md D20).
+**Result:** 26 tests green. The first board smoke run measured p95 207.1 ms, above the threshold. Two repeat runs gave 195.5 and 162.1 ms, so the difference from v2 is mostly noise, but the margin had been as thin as 2%, so the board cache was moved up (DECISIONS.md D20).
+
+## v6: board cache (patch 0009)
+
+**Why:** after the index, p95 ranged from 150 to 207 ms across seven runs. A pass that depends on luck is not a pass, and the deployed database (Atlas M0, about 100 operations per second) could not serve the load without a cache anyway.
+**What:** an in-process cache of the serialized board response with a 2 s TTL, shared between concurrent requests and invalidated before the response of every successful write. Unit tests for the cache (including a load that overlaps an invalidation) and API tests for freshness after create, join, leave and delete.
+**Result:** not measured yet. This section is completed after the load runs.
 
 ## Decisions outside the patches
 
