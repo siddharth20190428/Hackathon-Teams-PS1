@@ -60,6 +60,12 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** every write requires an `Idempotency-Key`; the key is claimed with a unique insert, parallel duplicates wait for the first to finish and return the same answer, and a key reused for a different request gets 422. Each state change writes an audit entry in the same transaction. Requests carry an id (`X-Request-Id`) and the acting user through an `AsyncLocalStorage` context. New read endpoint: the team audit log.
 **Result:** 66 tests green (one assertion in my own test needed a fix, patch 0013: the stored record keeps the raw ObjectId while the replayed JSON is identical). The seed passes all invariants. The board was re-measured: p95 of 38.1 to 39.3 ms over three 30 s runs, unchanged from v6, so request ids and the context cost nothing measurable on reads. Writes were not load-tested.
 
+## v9: authentication, rate limits, validation (patch 0015)
+
+**Why:** every earlier result was measured with a caller-supplied header that anyone could forge, and any user could be sent unbounded invite-code guesses. Neither can be exposed publicly.
+**What:** register, login, logout, `/me`; scrypt passwords; signed session token in a cookie or Bearer header; strict zod schemas; body size cap; in-memory rate limits; JSON 404 and error handler; `SESSION_SECRET` required at start. Load test now sends a minted token.
+**Result:** 24 new tests (90 in total). The board must be re-measured, because every read now verifies a token (one HMAC); expect no visible change, but this is not yet measured. Write paths still not load-tested.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.
@@ -67,4 +73,4 @@ The project was built in small patches. Each one was run against the tests, and 
 
 ## Next
 
-Real authentication and rate limits, then live updates and the UI, then deployment.
+Live updates and the UI, then deployment.

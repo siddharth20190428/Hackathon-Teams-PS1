@@ -17,11 +17,11 @@ Every `POST` and `DELETE` requires an `Idempotency-Key`. The key is claimed with
 ## D5. Live updates: server-sent events (planned)
 One-way updates over plain HTTP with automatic reconnect. Single-instance fan-out; change streams are the upgrade path.
 
-## D6. Authentication (planned)
-Signed token in an httpOnly cookie. Until it lands, see D17.
+## D6. Authentication
+Email and password, scrypt (built into Node, no extra dependency). A stateless HMAC-signed token in an httpOnly, SameSite=Lax cookie, also accepted as a Bearer header so load tests and curl work. Stateless means no session lookup on every request, at the price that a token cannot be revoked before it expires (7 days). A server-side session store is the upgrade if revocation is needed.
 
-## D7. Rate limiting (planned)
-In-memory, per IP and per user, on invite-code attempts, login and join.
+## D7. Rate limiting
+In-memory fixed windows: auth per IP, login per email, invite-code attempts per user and per IP. Per process only, so it is exact for one instance and weaker behind several. The per-email login limit can be used to lock an account out for a window; accepted and recorded as a known trade-off.
 
 ## D8. Invite codes
 50-bit codes from `crypto.randomBytes`, Crockford base32, unique, expiring (hackathon TTL, 48 h default), regenerable, case-insensitive with look-alike characters mapped. Stored in plain text so the leader can view them.
@@ -50,8 +50,11 @@ Iteration 0 was deliberately naive so the race test failed and the failure becam
 ## D16. AI usage rule
 AI tools are allowed, but every line must be explainable. Each iteration is followed by a short note on why the code is the way it is.
 
-## D17. Temporary identity header
-Until real authentication lands, the caller is named by the `x-user-id` header. For development, tests and load runs only.
+## D17. Temporary identity header (retired)
+The `x-user-id` header served v1 to v8 so the concurrency work could be built first. Removed in v9; a test asserts it no longer authenticates.
+
+## D23. Validation at the edge
+zod strict schemas for register, login and create-team; unknown fields are rejected, strings are trimmed, emails lowercased. Invalid input gets 400 with field paths and never echoes the password.
 
 ## D18. Direct join removed (security)
 Versions v1 to v3 let any user join any team with a free seat by its id, bypassing invite codes. Removed in v4. A test asserts that the route is gone.

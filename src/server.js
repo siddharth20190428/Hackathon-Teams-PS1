@@ -10,7 +10,16 @@ await ensureCoreIndexes(db);
 const parsed = Number.parseInt(process.env.BOARD_CACHE_TTL_MS ?? '', 10);
 const ttlMs = Number.isNaN(parsed) ? 2000 : parsed;
 
+const secret = process.env.SESSION_SECRET;
+if (!secret || secret.length < 32) {
+  throw new Error('SESSION_SECRET must be set to a random string of at least 32 characters (see README.md)');
+}
+
 const port = process.env.PORT ?? 3000;
-createApp(db, client, { boardCache: createBoardCache({ ttlMs }) }).listen(port, () =>
+createApp(db, client, {
+  secret,
+  boardCache: createBoardCache({ ttlMs }),
+  trustProxy: process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : false,
+}).listen(port, () =>
   console.log(`listening on ${port} (board cache ttl ${ttlMs} ms)`),
 );

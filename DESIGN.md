@@ -96,7 +96,9 @@ The board query filters open teams in one hackathon, sorted newest first, limite
 - Non-string code inputs, including `{ "$ne": null }`, are rejected before reaching the database.
 - Joining by team id was removed because it bypassed invite codes.
 - Leader-only actions check leadership inside the atomic filter.
-- Not secure yet: the caller is named by a plain `x-user-id` header. It exists only so the concurrency work could be built and measured first. Real authentication replaces it before this is exposed to anyone.
+- Authentication: email and password, scrypt hashes, a stateless HMAC-signed session token (`{sub, exp}`) in an httpOnly, SameSite=Lax cookie or a Bearer header. Unknown email and wrong password give the same 401, and an unknown email still pays a hash check. CSRF: SameSite=Lax plus the required `Idempotency-Key` custom header on every write.
+- Validation: zod `.strict()` schemas at the edge; bodies capped at 10 KB; operator objects such as `{"$ne":null}` never reach a query.
+- Rate limits: in-memory fixed windows. Known limit: the per-email login limit lets someone lock a victim out for the window; accepted for now. Sessions cannot be revoked before they expire.
 
 ## 8. Trade-offs and limits
 

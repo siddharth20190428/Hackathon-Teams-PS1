@@ -15,6 +15,17 @@ import { requestContext } from './context.js';
 import { idempotency } from './idempotency.js';
 import { listAudit } from './auditQueries.js';
 import {
+  createTokens,
+  requireAuth,
+  setSessionCookie,
+  clearSessionCookie,
+  registerUser,
+  loginUser,
+  getProfile,
+} from './auth.js';
+import { createRateLimiter } from './rateLimit.js';
+import { parse, registerSchema, loginSchema, createTeamSchema } from './validation.js';
+import {
   createJoinRequest,
   listJoinRequests,
   acceptJoinRequest,
@@ -24,27 +35,99 @@ import {
 
 const BOARD_LIMIT = 20;
 
+// Defaults. Tests pass `rateLimits: false` (off) or tighter numbers in `options`.
+const DEFAULT_LIMITS = {
+  authPerIp: { windowMs: 60_000, max: 30 }, // register and login, per IP address
+  loginPerEmail: { windowMs: 15 * 60_000, max: 10 }, // login attempts per account
+  codePerUser: { windowMs: 60_000, max: 10 }, // join-by-code attempts per user
+  codePerIp: { windowMs: 60_000, max: 300 }, // and per IP, which may be a shared network
+};
+
 export function createApp(db, client, options = {}) {
+  if (!options.secret) throw new Error('createApp needs options.secret (SESSION_SECRET)');
+  const tokens = options.tokens ?? createTokens(options.secret);
+  const secure = options.secureCookies ?? process.env.NODE_ENV === 'production';
   const boardCache = options.boardCache ?? createBoardCache();
+  const limits = options.rateLimits === false ? null : { ...DEFAULT_LIMITS, ...(options.rateLimits ?? {}) };
+  const limiter = (name) => (limits ? createRateLimiter(limits[name]) : null);
+  const noop = (req, res, next) => next();
+  const limitBy = (name, keyFn) => limiter(name)?.middleware(keyFn) ?? noop;
+
   const app = express();
   app.set('etag', false); // the cached board body is served as is
-  app.use(express.json());
-  app.get('/healthz', (req, res) => res.json({ ok: true }));
+  if (options.trustProxy) app.set('trust proxy', options.trustProxy); // behind a host's proxy, req.ip is the client
 
-  // TEMPORARY (replaced by real auth in I3): the caller is named by a header.
+  // Every request gets an id, echoed back in X-Request-Id.
   app.use((req, res, next) => {
-    req.userId = req.get('x-user-id');
-    if (!req.userId) return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    const incoming = req.get('x-request-id');
+    req.requestId = incoming && /^[A-Za-z0-9_.:-]{1,64}$/.test(incoming) ? incoming : randomUUID();
+    res.set('X-Request-Id', req.requestId);
     next();
   });
 
-  // Every request gets an id (echoed back) and a context the audit log reads.
-  app.use((req, res, next) => {
-    const incoming = req.get('x-request-id');
-    const requestId = incoming && /^[A-Za-z0-9_.:-]{1,64}$/.test(incoming) ? incoming : randomUUID();
-    res.set('X-Request-Id', requestId);
-    requestContext.run({ requestId, actorId: req.userId }, next);
+  app.use(express.json({ limit: '10kb' }));
+
+  // The audit log reads the request id and the acting user from this context. It starts after
+  // the body is parsed, because async context does not follow stream events; the acting user
+  // is filled in once the request is authenticated.
+  app.use((req, res, next) => requestContext.run({ requestId: req.requestId, actorId: null }, next));
+  app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+  const wrap = (fn) => (req, res) =>
+    fn(req, res).catch((err) => {
+      if (err.status) {
+        return res.status(err.status).json({ error: err.code, ...(err.details ? { details: err.details } : {}) });
+      }
+      console.error(err);
+      res.status(500).json({ error: 'INTERNAL' });
+    });
+
+  // ---- accounts (no session needed) ----
+  const authIp = limitBy('authPerIp', (req) => req.ip);
+  const loginEmail = limiter('loginPerEmail');
+
+  app.post(
+    '/auth/register',
+    authIp,
+    wrap(async (req, res) => {
+      const user = await registerUser(db, parse(registerSchema, req.body));
+      setSessionCookie(res, tokens, user.id, { secure });
+      res.status(201).json({ user });
+    }),
+  );
+
+  app.post(
+    '/auth/login',
+    authIp,
+    wrap(async (req, res) => {
+      const credentials = parse(loginSchema, req.body);
+      if (loginEmail) {
+        const { allowed, retryAfterSec } = loginEmail.hit(credentials.email);
+        if (!allowed) {
+          res.set('Retry-After', String(retryAfterSec));
+          return res.status(429).json({ error: 'RATE_LIMITED' });
+        }
+      }
+      const user = await loginUser(db, credentials);
+      setSessionCookie(res, tokens, user.id, { secure });
+      res.json({ user });
+    }),
+  );
+
+  app.post('/auth/logout', (req, res) => {
+    clearSessionCookie(res, { secure });
+    res.json({ ok: true });
   });
+
+  // ---- everything below needs a valid session ----
+  app.use(requireAuth(tokens));
+
+  app.get(
+    '/me',
+    wrap(async (req, res) => {
+      res.json({ user: await getProfile(db, req.userId) });
+    }),
+  );
 
   // Retried writes return the stored answer instead of running twice.
   app.use(idempotency(db));
@@ -62,20 +145,14 @@ export function createApp(db, client, options = {}) {
     next();
   });
 
-  const wrap = (fn) => (req, res) =>
-    fn(req, res).catch((err) => {
-      if (err.status) return res.status(err.status).json({ error: err.code });
-      console.error(err);
-      res.status(500).json({ error: 'INTERNAL' });
-    });
-
   app.post(
     '/hackathons/:hid/teams',
     wrap(async (req, res) => {
+      const { name } = parse(createTeamSchema, req.body);
       const team = await createTeam(db, client, {
         hackathonId: req.params.hid,
         userId: req.userId,
-        name: req.body?.name,
+        name,
       });
       res.status(201).json(team);
     }),
@@ -83,6 +160,8 @@ export function createApp(db, client, options = {}) {
 
   app.post(
     '/hackathons/:hid/join-by-code',
+    limitBy('codePerUser', (req) => `user:${req.userId}`),
+    limitBy('codePerIp', (req) => `ip:${req.ip}`),
     wrap(async (req, res) => {
       res.status(201).json(
         await joinByCode(db, client, {
@@ -211,6 +290,16 @@ export function createApp(db, client, options = {}) {
       res.json(await getTeam(db, { teamId: req.params.id }));
     }),
   );
+
+    // Anything not matched above, and errors thrown outside the route wrapper.
+  app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND' }));
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'INVALID_JSON' });
+    if (err.type === 'entity.too.large') return res.status(413).json({ error: 'PAYLOAD_TOO_LARGE' });
+    console.error(err);
+    res.status(500).json({ error: 'INTERNAL' });
+  });
 
   return app;
 }

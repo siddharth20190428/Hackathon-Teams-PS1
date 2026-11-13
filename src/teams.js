@@ -17,6 +17,12 @@ export const isMembershipDuplicate = (err) => isDuplicateKey(err) && !isInviteCo
 // Invite codes are secrets: they never appear on the board or on the public team view.
 const PUBLIC_TEAM = { inviteCode: 0, inviteExpiresAt: 0 };
 
+// Names shown to other people. Falls back to the id for accounts without a profile.
+async function displayNameOf(db, userId, session) {
+  const user = await db.collection('users').findOne({ _id: userId }, { session, projection: { displayName: 1 } });
+  return user?.displayName ?? userId;
+}
+
 const inviteExpiry = (hack) => new Date(Date.now() + (hack?.inviteTtlHours ?? 48) * 3600 * 1000);
 
 export async function createTeam(db, client, { hackathonId, userId, name }) {
@@ -30,7 +36,7 @@ export async function createTeam(db, client, { hackathonId, userId, name }) {
       hackathonId,
       name: name.trim(),
       leaderId: userId,
-      leaderName: userId,
+      leaderName: await displayNameOf(db, userId),
       maxSize: hack.maxTeamSize,
       memberCount: 1,
       openSeats: hack.maxTeamSize - 1,
@@ -226,7 +232,7 @@ export async function leaveTeam(db, client, { teamId, userId }) {
         .next();
       await db
         .collection('teams')
-        .updateOne({ _id }, { $set: { leaderId: next.userId, leaderName: next.userId } }, { session });
+        .updateOne({ _id }, { $set: { leaderId: next.userId, leaderName: await displayNameOf(db, next.userId, session) } }, { session });
       await db.collection('memberships').updateOne({ _id: next._id }, { $set: { role: 'leader' } }, { session });
       await audit(db, session, {
         action: 'LEADER_CHANGED',

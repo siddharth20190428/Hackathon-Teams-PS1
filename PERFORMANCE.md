@@ -62,5 +62,5 @@ Patch 0012 adds an `AsyncLocalStorage` context and a request id to every request
 ## Next
 
 1. Add a mixed read-and-join scenario to measure the cache under writes.
-2. Re-measure after authentication and idempotency are added, because they add per-request work.
+2. Re-measure after authentication (v9): every read now verifies one HMAC token. Run with `TOKEN=$(npm run -s token -- u1) LABEL=v9-1 npm run load`.
 3. Run a deployed smoke test (Atlas M0 plus the cache).

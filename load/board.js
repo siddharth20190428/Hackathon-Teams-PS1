@@ -3,6 +3,8 @@ import { check } from 'k6';
 
 const BASE = __ENV.BASE_URL || 'http://localhost:3000';
 const HACKATHON = __ENV.HACKATHON_ID || 'h1';
+const TOKEN = __ENV.TOKEN;
+if (!TOKEN) throw new Error('set TOKEN, e.g. TOKEN=$(npm run -s token -- u1) npm run load');
 
 export const options = {
   scenarios: {
@@ -21,7 +23,7 @@ export const options = {
 
 export default function () {
   const res = http.get(`${BASE}/hackathons/${HACKATHON}/board`, {
-    headers: { 'x-user-id': `u${__VU}` },
+    headers: { authorization: `Bearer ${TOKEN}` },
   });
   check(res, { 'status is 200': (r) => r.status === 200 });
 }

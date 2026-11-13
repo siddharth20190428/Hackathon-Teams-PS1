@@ -21,7 +21,7 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-66 tests in 9 files.
+90 tests in 12 files.
 
 | File | Tests |
 |---|---|
@@ -34,10 +34,13 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 | `test/requests.test.js` | T13 request, list, accept. T14 decline, then ask again. T11 non-leaders cannot list, accept or decline. Cancel by the requester only. Duplicate, own-team and full-team guards. T15 request voided when the requester joins elsewhere first, and a stale pending request voided cleanly. Joining or creating a team voids other requests. T17 last member leaving cancels pending requests. T19 two accepts for one seat (10 rounds). Accept racing the requester joining elsewhere (10 rounds). Accept racing the leader leaving (10 rounds) |
 | `test/idempotency.test.js` | Request hashing ignores key order. Missing and malformed keys rejected; reads need none. T5 replay returns the identical stored response. T6 same key with a different request is 422. T3 ten parallel requests with one key run once (AC-3). T3b ten parallel joins with one key. T4 double-clicked create-team. Keys are scoped per user. A stored failure is replayed after the situation changes. A stale `processing` record is taken over. The stored record shape |
 | `test/audit.test.js` | T22 every change has an entry with actor, target and request id. Join-request decisions. Leader succession and departure. A failed action leaves no entry. A deleted team keeps its history. Members only, and no invite codes in the log. I-7 detects a tampered member count |
+| `test/auth.test.js` | Register and login, cookie flags, hashed password at rest. Ten racing registrations of one email (case-insensitive) make one account. Wrong password and unknown email look identical. T21 every protected route is 401 without a session; the old `x-user-id` header no longer works. Tampered, expired and garbage tokens are rejected. T20 operator-injection and malformed bodies, invalid JSON and oversized bodies. Create-team validation. End-to-end cookie session through join-by-code with actor ids in the audit log. T10 invite-code guessing is blocked per user; per-email and per-IP login limits |
+| `test/tokens.test.js` | Unit tests, no database: token round trip, tampering, expiry with a fake clock, short secret refused; scrypt salt and verification |
+| `test/rateLimit.test.js` | Unit tests, no database: window limits with a fake clock, per-key counting, bounded key count, 429 with `Retry-After` |
 
 ## Not covered yet
 
-Rate limiting (T10), authentication (T21), board pagination (T23), suggestions (T24), live updates (T25), and the chaos test (T26).
+Board pagination (T23), suggestions (T24), live updates (T25), and the chaos test (T26).
 
 ## Known limits of these tests
 

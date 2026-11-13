@@ -16,9 +16,9 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Looking-for-teammates board | Done for the first page (20 teams); cursor pagination not built |
 | Board p95 under 200 ms at 100 users | Met in all 5 runs with the board cache (p95 39 to 42 ms); without it, the same code lands between 145 and 207 ms. Local, one machine. See [PERFORMANCE.md](PERFORMANCE.md) |
 | Join requests (request, list, accept, decline, cancel) | Done |
-| Real authentication | Not built. A temporary `x-user-id` header names the caller |
+| Real authentication | Done: email and password (scrypt), signed session token in an httpOnly cookie or Bearer header |
 | Idempotency keys on every write, audit log per team | Done |
-| Rate limits, input validation library | Not built |
+| Rate limits, input validation (zod) | Done: in-memory limits on login, auth and invite-code guesses; strict schemas |
 | Live updates (SSE), teammate suggestions, React UI | Not built |
 | CI | Workflow included; first run to be confirmed |
 | Live deployment | Not deployed yet |
@@ -55,9 +55,11 @@ The seed script refuses to wipe a database whose name does not contain `dev` or 
 
 4. Try it.
 ```
-curl -s -X POST localhost:3000/hackathons/h1/teams \
-  -H 'idempotency-key: demo-0001' -H 'x-user-id: alice' -H 'content-type: application/json' -d '{"name":"Dream Team"}'
-curl -s -H 'x-user-id: alice' localhost:3000/hackathons/h1/board
+curl -s -c jar -X POST localhost:3000/auth/register -H 'content-type: application/json' \
+  -d '{"email":"alice@example.com","password":"correct horse battery","displayName":"Alice"}'
+curl -s -b jar -X POST localhost:3000/hackathons/h1/teams \
+  -H 'idempotency-key: demo-0001' -H 'content-type: application/json' -d '{"name":"Dream Team"}'
+curl -s -b jar localhost:3000/hackathons/h1/board
 ```
 
 ## Scripts
@@ -70,11 +72,14 @@ curl -s -H 'x-user-id: alice' localhost:3000/hackathons/h1/board
 | `npm test` | Runs the full test suite (needs the MongoDB container running) |
 | `RACE_ROUNDS=20 npm run test:race` | Runs the 50-way race test for 20 rounds instead of 5 |
 | `LABEL=run1 DURATION=30s npm run load` | k6 load test on the board; prints a summary and writes `reports/<LABEL>.json`. Also accepts `VUS` and `BASE_URL` |
+| `npm run token -- <userId>` | Prints a session token for a user id (needs `SESSION_SECRET`), for load tests: `TOKEN=$(npm run -s token -- u1) LABEL=run1 npm run load` |
 | `npm run explain:board` | Prints the query plan of the board query |
 
 ## API
 
-Every route except `/healthz` needs the temporary `x-user-id` header. This is for development only and is not secure.
+Set `SESSION_SECRET` (32+ characters) in `.env` before starting; the server refuses to start without it: `echo "SESSION_SECRET=$(openssl rand -hex 32)" >> .env`.
+
+Every route except `/healthz`, `POST /auth/register`, `POST /auth/login` and `POST /auth/logout` needs a session: the `session` cookie set by register or login, or an `Authorization: Bearer <token>` header. Tokens are HMAC-signed, expire after 7 days and are not stored server side, so logout only clears the cookie. Passwords are hashed with scrypt. Bad input gets 400 `VALIDATION_ERROR` with a `details` list; unknown fields are rejected. Rate limits answer 429 `RATE_LIMITED` with `Retry-After`: 30 auth requests per minute per IP, 10 login attempts per 15 minutes per email, 10 invite-code attempts per minute per user and 300 per IP. Limits are per process (single instance).
 
 Every `POST` and `DELETE` also needs an `Idempotency-Key` header (8 to 128 characters: letters, digits, `_ . : -`). Send the same key when retrying a request: the first answer is stored and returned again (with `Idempotent-Replayed: true`) and nothing runs twice. The same key with a different request gets 422. Keys are per user and expire after 24 hours. Every response carries an `X-Request-Id` header (send your own `X-Request-Id` to choose it); the audit log records it.
 

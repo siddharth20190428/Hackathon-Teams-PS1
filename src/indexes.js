@@ -8,6 +8,9 @@ export async function ensureCoreIndexes(db) {
   for (const name of ['hackathons', 'users', 'teams', 'memberships', 'joinRequests', 'idempotencyKeys', 'auditLog']) {
     await db.createCollection(name).catch(ignoreExists);
   }
+  // One account per email: the database decides when two registrations race.
+  await db.collection('users').createIndex({ email: 1 }, { unique: true });
+
   // One team per person per hackathon: the database enforces it.
   await db.collection('memberships').createIndex({ hackathonId: 1, userId: 1 }, { unique: true });
   await db.collection('memberships').createIndex({ teamId: 1, joinedAt: 1 });
