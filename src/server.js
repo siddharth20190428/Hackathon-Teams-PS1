@@ -20,8 +20,10 @@ const port = process.env.PORT ?? 3000;
 createApp(db, client, {
   secret,
   boardEvents: createBoardEvents(),
+  // RATE_LIMITS=off is for write-path load tests only: from one IP the limits would trip at once.
+  rateLimits: process.env.RATE_LIMITS === 'off' ? false : undefined,
   boardCache: createBoardCache({ ttlMs }),
   trustProxy: process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : false,
 }).listen(port, () =>
-  console.log(`listening on ${port} (board cache ttl ${ttlMs} ms)`),
+  console.log(`listening on ${port} (board cache ttl ${ttlMs} ms${process.env.RATE_LIMITS === 'off' ? ', RATE LIMITS OFF' : ''})`),
 );

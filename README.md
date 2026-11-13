@@ -74,6 +74,10 @@ curl -s -b jar localhost:3000/hackathons/h1/board
 | `RACE_ROUNDS=20 npm run test:race` | Runs the 50-way race test for 20 rounds instead of 5 |
 | `LABEL=run1 DURATION=30s npm run load` | k6 load test on the board; prints a summary and writes `reports/<LABEL>.json`. Also accepts `VUS` and `BASE_URL` |
 | `npm run token -- <userId>` | Prints a session token for a user id (needs `SESSION_SECRET`), for load tests: `TOKEN=$(npm run -s token -- u1) LABEL=run1 npm run load` |
+| `node --env-file=.env scripts/load-fixtures.js` | Picks free users, hot teams and open teams after a seed and writes `load/fixtures.json` (not committed) |
+| `RATE_LIMITS=off npm start` | Starts the API with rate limits off; for write-path load tests only |
+| `LABEL=w1 k6 run load/mixed.js` | Write-path load test: 70% board reads, 25% joins (half aimed at a few hot seats), 5% team creates. Writes `reports/<LABEL>.json`. `VUS`, `DURATION` and `THINK_MS` (mean pause per user; default 0 is a stress test) are options |
+| `node --env-file=.env scripts/verify-load.js` | After a load run: all invariants must hold and no hot team may exceed its open seats |
 | `npm run explain:board` | Prints the query plan of the board query |
 
 ## API

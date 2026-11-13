@@ -59,6 +59,49 @@ Patch 0012 adds an `AsyncLocalStorage` context and a request id to every request
 - Only the board read was load-tested, with no writes. Every write invalidates the cache, so a write-heavy mix will see a lower hit rate. The test also hits a single cache key, which is the best case for a cache. A mixed read-and-join scenario has not been run.
 - At 5,000 or more requests per second, k6 and Node compete for the same two cores, so the cache-on latency (about 16 ms median) is mostly CPU contention on this machine, not database time.
 
+## Write-path load test (procedure)
+
+The board runs above are read-only. The write-path test mixes board reads, joins and team creation, and checks correctness afterwards, because a fast wrong answer does not count.
+
+```
+npm run seed
+node --env-file=.env scripts/load-fixtures.js     # free users, 5 hot teams (fewest open seats), 300 other open teams
+RATE_LIMITS=off npm start                         # terminal 1; limits would trip from a single IP
+LABEL=w1 k6 run load/mixed.js                     # terminal 2
+node --env-file=.env scripts/verify-load.js       # must print LOAD VERIFY PASSED
+```
+
+Half of the joins aim at the hot teams, so many users fight for the same few seats. Pass criteria: p95 under 200 ms for each of board, join and create; no 5xx; no 429 (which would mean the limits were on); and `verify-load` passing (all invariants, and no hot team over its open seats). Every write invalidates the board cache, so the board numbers here are the cache's worst case, not its best.
+
+### Results: stress test (no think time)
+
+Every run was started from a fresh seed and fresh fixtures. `verify-load` passed on all four runs (all invariants held; each of the 5 hot teams had 1 seat and exactly 1 joiner won it). No 5xx in any run. Mix 70% read, 25% join, 5% create; times in ms.
+
+| Users | req/s | board p95 | join p95 | create p95 |
+|---|---|---|---|---|
+| 10 | 487 | 11.9 | 91.5 | 105.3 |
+| 25 | 517 | 32.4 | 195.9 | 233.9 |
+| 50 | 517 | 71.6 | 343.9 | 421.0 |
+| 100 | 464 | 169.6 | 707.4 | 859.9 |
+
+Reading: throughput is flat from 10 to 100 users while latency grows in proportion to the user count (join p95 divided by users is 7 to 9 ms at every level). That is queueing at a ceiling of about 150 writes per second, not a per-request cost that grows. Top and `docker stats` during the runs showed mongod at 64 to 91% of a core, Node at 36 to 50%, k6 at 17 to 73% and docker-proxy at 9 to 17%, so the two shared cores are the limit; lock contention would leave CPU idle, and creates (no shared rows) are the slowest operation. With 10 users, all three operations are under 200 ms. At 100 users with no pause, the write target is missed by about 3.5 to 4 times.
+
+My prediction before the first run was 30 to 150 ms for writes at 100 users; it was wrong by about 5 times, because I did not account for the load generator and the database sharing the same two cores.
+
+Caveats: about 14,000 to 15,500 iterations ran against a pool of 4,000 users, so the pool wrapped and some 409 joins and non-201 creates are "already in a team" from reused users. k6 itself uses a large share of the CPU, so the app's real capacity is higher than measured. The deployed database (Atlas M0, about 100 operations per second) cannot be load-tested this way; the deployed site gets a smoke test only.
+
+### Results: realistic profile (think time)
+
+Prediction, written before the run: 100 users with a mean pause of 1 s will land near the 10-user numbers above (board about 12 ms, join about 90 ms, create about 105 ms p95), because the offered load (about 100 req/s) is well under the ceiling. Measured (`THINK_MS=1000 LABEL=w-think k6 run load/mixed.js`, 100 users, 30 s, fresh seed): 3,006 requests at 95.7 req/s; no 5xx; `verify-load` passed.
+
+| Operation | p95 predicted | p95 measured | median | p99 | max |
+|---|---|---|---|---|---|
+| board | about 12 | 6.6 | 0.4 | 52.3 | 224.3 |
+| join | about 90 | 73.5 | 11.0 | 270.2 | 297.2 |
+| create | about 105 | 99.5 | 12.6 | 259.6 | 267.9 |
+
+Joins: 303 won a seat, 439 refused (team full or already in a team). Creates: 132 of 132 succeeded. All three operations are under the 200 ms target at p95, with the prediction slightly conservative. The median write is 11 to 13 ms, which is the uncontended cost of a transaction here. Open item: write p99 is about 260 to 270 ms and the max about 300 ms, above the target even though the target is p95. I have not measured the cause; candidates are write-conflict retries on the 5 hot teams and database checkpoints. Together with the stress results above: under a realistic pause the service meets the target with a wide margin; its limit on this hardware is about 150 writes per second.
+
 ## Next
 
 1. Add a mixed read-and-join scenario to measure the cache under writes.

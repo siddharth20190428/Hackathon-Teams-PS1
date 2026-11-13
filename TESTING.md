@@ -39,6 +39,10 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 | `test/rateLimit.test.js` | Unit tests, no database: window limits with a fake clock, per-key counting, bounded key count, 429 with `Retry-After` |
 | `test/events.test.js` | Hub unit tests, no database: a burst of publishes becomes one event with the latest version; total and per-user stream caps and freeing a slot on close; a client that is not reading is dropped. T25 over HTTP: 401 without a session; the stream opens with a `ready` event; a new team wakes the stream and the board read right after shows it; 15 parallel creates send fewer events than writes, versions never go backwards, and the board then shows all 15; a failed write sends no event; the per-user cap returns 429 and frees on close |
 
+## Load-time correctness check
+
+`scripts/verify-load.js` runs after `load/mixed.js`: it runs the invariant checker (I-1 to I-7) over the whole database, and checks for each hot team that member count equals membership rows, open seats are not negative, and joiners did not exceed the seats it had. This is the check that speed did not cost correctness.
+
 ## Not covered yet
 
 Board pagination (T23), suggestions (T24), and the chaos test (T26). Live updates were tested through the HTTP stream only; no browser client has been run against them yet.

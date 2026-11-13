@@ -72,6 +72,12 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** an SSE stream for the board that sends a version-only "changed" signal, published right after the cache invalidation and coalesced over 100 ms; caps of 5 streams per user and 2,000 in total; slow readers dropped. The client re-reads the cached board. Per-team events were left out on purpose.
 **Result:** 9 new tests, 99 in total (3 hub unit tests, 6 over HTTP). The load cost of open streams is not measured yet. Unverified: behaviour through Render's proxy (heartbeat and `X-Accel-Buffering` are set for it).
 
+## v11: write-path load test (patch 0017)
+
+**Why:** every latency number so far is a cached read of one key. The brief judges concurrency correctness first, and the write paths (transactions, idempotency, audit) had only been tested for correctness, never for speed under load.
+**What:** a k6 scenario mixing board reads, joins (half aimed at a few hot seats) and team creation with a fresh user per write; a fixtures script; a post-run verifier that runs all invariants; `RATE_LIMITS=off` for load runs.
+**Result:** correctness held in all five runs (invariants ok, 5 hot seats given to exactly 5 joiners, no 5xx). Performance did not meet the 200 ms target at 100 users with no pause: join p95 707 ms, create p95 860 ms, board p95 170 ms. A sweep from 10 to 100 users shows flat throughput (about 500 req/s, about 150 writes/s) and latency proportional to users: saturation of the two shared cores, not a per-request cost. At 10 users all three operations pass. My prediction (30 to 150 ms at 100 users) was wrong by about 5 times. Decision: not to optimize now; add a think-time option, measure a realistic profile against a recorded prediction, and report the stress numbers as they are. Realistic profile (100 users, 1 s mean pause, about 96 req/s): board p95 6.6 ms, join 73.5 ms, create 99.5 ms, all under the target and slightly better than my recorded prediction; invariants ok. Write p99 is about 260 to 270 ms (cause not measured). Details in PERFORMANCE.md.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.
