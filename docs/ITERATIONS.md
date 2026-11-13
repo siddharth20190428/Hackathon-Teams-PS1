@@ -64,7 +64,13 @@ The project was built in small patches. Each one was run against the tests, and 
 
 **Why:** every earlier result was measured with a caller-supplied header that anyone could forge, and any user could be sent unbounded invite-code guesses. Neither can be exposed publicly.
 **What:** register, login, logout, `/me`; scrypt passwords; signed session token in a cookie or Bearer header; strict zod schemas; body size cap; in-memory rate limits; JSON 404 and error handler; `SESSION_SECRET` required at start. Load test now sends a minted token.
-**Result:** 24 new tests (90 in total). The board must be re-measured, because every read now verifies a token (one HMAC); expect no visible change, but this is not yet measured. Write paths still not load-tested.
+**Result:** 24 new tests, 90 green; seed invariants ok. Board re-measured with a minted token (three 30 s runs): p95 46.7, 47.2 and 44.2 ms at 4,477 to 4,692 requests per second, against 38.1 to 39.3 ms at about 5,400 to 5,570 for v8. So auth added about 7 ms of p95 (+18%) and cost about 15% of throughput, from per-request cookie parsing, an HMAC check and a JSON parse. The target is still met with about 76% margin. My prediction of no visible change was wrong. Not optimized: token memoization would add cache logic to a security path for a margin we already have. Write paths still not load-tested.
+
+## v10: live board updates (patch 0016)
+
+**Why:** a board that only changes on refresh hides the point of the system: when the last seat goes, everyone should see it go. It is also a requirement from the brief.
+**What:** an SSE stream for the board that sends a version-only "changed" signal, published right after the cache invalidation and coalesced over 100 ms; caps of 5 streams per user and 2,000 in total; slow readers dropped. The client re-reads the cached board. Per-team events were left out on purpose.
+**Result:** 9 new tests, 99 in total (3 hub unit tests, 6 over HTTP). The load cost of open streams is not measured yet. Unverified: behaviour through Render's proxy (heartbeat and `X-Accel-Buffering` are set for it).
 
 ## Decisions outside the patches
 
@@ -73,4 +79,4 @@ The project was built in small patches. Each one was run against the tests, and 
 
 ## Next
 
-Live updates and the UI, then deployment.
+The UI, then deployment.

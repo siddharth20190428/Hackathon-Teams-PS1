@@ -1,6 +1,7 @@
 import { connect } from './db.js';
 import { createApp } from './app.js';
 import { createBoardCache } from './boardCache.js';
+import { createBoardEvents } from './boardEvents.js';
 import { ensureCoreIndexes } from './indexes.js';
 
 const { client, db } = await connect();
@@ -18,6 +19,7 @@ if (!secret || secret.length < 32) {
 const port = process.env.PORT ?? 3000;
 createApp(db, client, {
   secret,
+  boardEvents: createBoardEvents(),
   boardCache: createBoardCache({ ttlMs }),
   trustProxy: process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : false,
 }).listen(port, () =>

@@ -65,5 +65,5 @@ export async function setup(options = {}) {
     await client.close();
   };
 
-  return { db, call, raw, tokenFor, codeOf, joinByCode, join, teardown };
+  return { db, base, call, raw, tokenFor, codeOf, joinByCode, join, teardown };
 }

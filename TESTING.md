@@ -21,7 +21,7 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-90 tests in 12 files.
+99 tests in 13 files.
 
 | File | Tests |
 |---|---|
@@ -37,10 +37,11 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 | `test/auth.test.js` | Register and login, cookie flags, hashed password at rest. Ten racing registrations of one email (case-insensitive) make one account. Wrong password and unknown email look identical. T21 every protected route is 401 without a session; the old `x-user-id` header no longer works. Tampered, expired and garbage tokens are rejected. T20 operator-injection and malformed bodies, invalid JSON and oversized bodies. Create-team validation. End-to-end cookie session through join-by-code with actor ids in the audit log. T10 invite-code guessing is blocked per user; per-email and per-IP login limits |
 | `test/tokens.test.js` | Unit tests, no database: token round trip, tampering, expiry with a fake clock, short secret refused; scrypt salt and verification |
 | `test/rateLimit.test.js` | Unit tests, no database: window limits with a fake clock, per-key counting, bounded key count, 429 with `Retry-After` |
+| `test/events.test.js` | Hub unit tests, no database: a burst of publishes becomes one event with the latest version; total and per-user stream caps and freeing a slot on close; a client that is not reading is dropped. T25 over HTTP: 401 without a session; the stream opens with a `ready` event; a new team wakes the stream and the board read right after shows it; 15 parallel creates send fewer events than writes, versions never go backwards, and the board then shows all 15; a failed write sends no event; the per-user cap returns 429 and frees on close |
 
 ## Not covered yet
 
-Board pagination (T23), suggestions (T24), live updates (T25), and the chaos test (T26).
+Board pagination (T23), suggestions (T24), and the chaos test (T26). Live updates were tested through the HTTP stream only; no browser client has been run against them yet.
 
 ## Known limits of these tests
 

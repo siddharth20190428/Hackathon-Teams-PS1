@@ -23,6 +23,9 @@ Email and password, scrypt (built into Node, no extra dependency). A stateless H
 ## D7. Rate limiting
 In-memory fixed windows: auth per IP, login per email, invite-code attempts per user and per IP. Per process only, so it is exact for one instance and weaker behind several. The per-email login limit can be used to lock an account out for a window; accepted and recorded as a known trade-off.
 
+## D24. Live updates are a signal, not data
+SSE carries only a version number; the client re-reads the cached board. This keeps one rendering path for the board and one place where staleness is controlled (the cache invalidation). Events are published after the cache is invalidated, coalesced over 100 ms, and bounded by per-user and total stream caps. Rejected: pushing board diffs (a second read model that has to be kept correct under races) and WebSockets (two-way, not needed). Limit: in-process, so single instance, like the board cache.
+
 ## D8. Invite codes
 50-bit codes from `crypto.randomBytes`, Crockford base32, unique, expiring (hackathon TTL, 48 h default), regenerable, case-insensitive with look-alike characters mapped. Stored in plain text so the leader can view them.
 

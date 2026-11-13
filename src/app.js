@@ -11,6 +11,7 @@ import {
   getTeam,
 } from './teams.js';
 import { createBoardCache } from './boardCache.js';
+import { createBoardEvents } from './boardEvents.js';
 import { requestContext } from './context.js';
 import { idempotency } from './idempotency.js';
 import { listAudit } from './auditQueries.js';
@@ -48,6 +49,7 @@ export function createApp(db, client, options = {}) {
   const tokens = options.tokens ?? createTokens(options.secret);
   const secure = options.secureCookies ?? process.env.NODE_ENV === 'production';
   const boardCache = options.boardCache ?? createBoardCache();
+  const boardEvents = options.boardEvents ?? createBoardEvents();
   const limits = options.rateLimits === false ? null : { ...DEFAULT_LIMITS, ...(options.rateLimits ?? {}) };
   const limiter = (name) => (limits ? createRateLimiter(limits[name]) : null);
   const noop = (req, res, next) => next();
@@ -138,7 +140,10 @@ export function createApp(db, client, options = {}) {
     if (req.method !== 'GET') {
       const json = res.json.bind(res);
       res.json = (body) => {
-        if (res.statusCode < 400 && !res.locals.skipBoardInvalidation) boardCache.invalidate();
+        if (res.statusCode < 400 && !res.locals.skipBoardInvalidation) {
+          boardCache.invalidate(); // first, so a client woken by the event reads fresh data
+          boardEvents.publish();
+        }
         return json(body);
       };
     }
@@ -283,6 +288,12 @@ export function createApp(db, client, options = {}) {
       res.type('json').send(body);
     }),
   );
+
+  // Live updates: a signal that the board changed; the client re-reads the board.
+  app.get('/hackathons/:hid/board/events', (req, res) => {
+    const result = boardEvents.subscribe(req, res, req.userId);
+    if (!result.ok) res.status(result.status).json({ error: result.error });
+  });
 
   app.get(
     '/teams/:id',
