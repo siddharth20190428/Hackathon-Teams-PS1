@@ -5,12 +5,21 @@ const ignoreExists = (err) => {
 // Indexes the correctness rules depend on. Safe to run on every start.
 export async function ensureCoreIndexes(db) {
   // Create collections up front so transactions never have to create them implicitly.
-  for (const name of ['hackathons', 'users', 'teams', 'memberships']) {
+  for (const name of ['hackathons', 'users', 'teams', 'memberships', 'joinRequests']) {
     await db.createCollection(name).catch(ignoreExists);
   }
   // One team per person per hackathon: the database enforces it.
   await db.collection('memberships').createIndex({ hackathonId: 1, userId: 1 }, { unique: true });
   await db.collection('memberships').createIndex({ teamId: 1, joinedAt: 1 });
+
+  // At most one pending request per person per team. Decided requests do not count,
+  // so a declined person may ask again.
+  await db.collection('joinRequests').createIndex(
+    { teamId: 1, userId: 1 },
+    { unique: true, partialFilterExpression: { status: 'pending' } },
+  );
+  await db.collection('joinRequests').createIndex({ teamId: 1, status: 1, createdAt: 1 });
+  await db.collection('joinRequests').createIndex({ hackathonId: 1, userId: 1, status: 1 });
 
   // Invite codes are unique across teams. Partial, so documents without a code are fine.
   await db.collection('teams').createIndex(

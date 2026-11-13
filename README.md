@@ -14,8 +14,8 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Create team, leave, remove member, leader succession, last member deletes the team | Done |
 | Invite codes (expiry, regenerate, hidden from public views) | Done |
 | Looking-for-teammates board | Done for the first page (20 teams); cursor pagination not built |
-| Board p95 under 200 ms at 100 users | Met in 6 of 7 runs after the index (p95 150 to 207 ms) but with margins as thin as 2%. An in-process board cache was added to make it robust and has not been measured yet. See [PERFORMANCE.md](PERFORMANCE.md) |
-| Join requests (request, accept, decline, cancel) | Not built |
+| Board p95 under 200 ms at 100 users | Met in all 5 runs with the board cache (p95 39 to 42 ms); without it, the same code lands between 145 and 207 ms. Local, one machine. See [PERFORMANCE.md](PERFORMANCE.md) |
+| Join requests (request, list, accept, decline, cancel) | Done |
 | Real authentication | Not built. A temporary `x-user-id` header names the caller |
 | Idempotency keys, audit log, rate limits, input validation library | Not built |
 | Live updates (SSE), teammate suggestions, React UI | Not built |
@@ -84,6 +84,11 @@ Every route except `/healthz` needs the temporary `x-user-id` header. This is fo
 | `POST /teams/:id/invite/regenerate` | leader | a new code; the old one stops working |
 | `POST /teams/:id/leave` | member | `{ teamId, userId, teamDeleted, newLeaderId? }` |
 | `DELETE /teams/:id/members/:uid` | leader | `{ teamId, removed }` |
+| `POST /teams/:id/join-requests` | any user not in a team | 201 `{ requestId, teamId, userId, status }` |
+| `GET /teams/:id/join-requests` | leader | `{ requests }`: pending requests, oldest first |
+| `POST /teams/:id/join-requests/:rid/accept` | leader | `{ requestId, teamId, userId }`; the requester becomes a member |
+| `POST /teams/:id/join-requests/:rid/decline` | leader | `{ requestId, status: "declined" }` |
+| `DELETE /teams/:id/join-requests/:rid` | the requester | `{ requestId, status: "cancelled" }` |
 | `GET /hackathons/:hid/board` | any user | `{ teams }`: open teams, newest first, invite fields hidden |
 | `GET /teams/:id` | any user | the team, invite fields hidden |
 
@@ -95,10 +100,10 @@ Errors are JSON of the form `{ "error": "CODE" }`.
 | 401 | `UNAUTHENTICATED` |
 | 403 | `NOT_LEADER` |
 | 404 | `NOT_FOUND`, `HACKATHON_NOT_FOUND`, `INVALID_CODE` (unknown code), `NOT_MEMBER` |
-| 409 | `ALREADY_IN_TEAM`, `TEAM_FULL` |
+| 409 | `ALREADY_IN_TEAM`, `TEAM_FULL`, `ALREADY_REQUESTED`, `ALREADY_DECIDED`, `REQUESTER_UNAVAILABLE` |
 | 410 | `CODE_EXPIRED` |
 
-There is deliberately no way to join a team by its id alone. Joining needs an invite code (and, once built, an accepted join request).
+There is deliberately no way to join a team by its id alone. Joining needs an invite code or an accepted join request.
 
 ## Project layout
 
@@ -109,6 +114,8 @@ src/tx.js           Transaction helper
 src/indexes.js      The indexes the rules depend on
 src/invariants.js   Consistency checker used by tests and the seed script
 src/inviteCodes.js  Invite code generation and normalization
+src/requests.js     Join requests: create, list, accept, decline, cancel
+src/requestCleanup.js  Voiding join requests when people join or teams are deleted
 src/boardCache.js   In-process cache for the board response
 scripts/seed.js     Seed data and invariant check
 load/board.js       k6 load test

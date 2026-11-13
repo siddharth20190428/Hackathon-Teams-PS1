@@ -2,15 +2,16 @@ import { ObjectId } from 'mongodb';
 import { httpError } from './errors.js';
 import { runTransaction } from './tx.js';
 import { newInviteCode, normalizeCode, isValidCode } from './inviteCodes.js';
+import { cancelUserRequests, cancelTeamRequests } from './requestCleanup.js';
 
-const toId = (s) => {
+export const toId = (s) => {
   if (!ObjectId.isValid(s)) throw httpError(404, 'NOT_FOUND');
   return new ObjectId(s);
 };
 
 const isDuplicateKey = (err) => err?.code === 11000;
 const isInviteCodeCollision = (err) => isDuplicateKey(err) && err.keyPattern?.inviteCode !== undefined;
-const isMembershipDuplicate = (err) => isDuplicateKey(err) && !isInviteCodeCollision(err);
+export const isMembershipDuplicate = (err) => isDuplicateKey(err) && !isInviteCodeCollision(err);
 
 // Invite codes are secrets: they never appear on the board or on the public team view.
 const PUBLIC_TEAM = { inviteCode: 0, inviteExpiresAt: 0 };
@@ -46,6 +47,8 @@ export async function createTeam(db, client, { hackathonId, userId, name }) {
           { session },
         );
         await db.collection('teams').insertOne(team, { session });
+        // Asking to join other teams is moot once you lead your own.
+        await cancelUserRequests(db, session, hackathonId, userId);
       });
       return team;
     } catch (err) {
@@ -73,6 +76,8 @@ async function addMember(db, session, { filter, userId }) {
     { hackathonId: team.hackathonId, teamId: team._id, userId, role: 'member', joinedAt: new Date() },
     { session },
   );
+  // Joining a team voids the person's other pending join requests.
+  await cancelUserRequests(db, session, team.hackathonId, userId);
   return team;
 }
 
@@ -177,6 +182,8 @@ export async function leaveTeam(db, client, { teamId, userId }) {
 
     if (team.memberCount === 0) {
       await db.collection('teams').deleteOne({ _id }, { session });
+      // Nobody can accept a deleted team's pending requests.
+      await cancelTeamRequests(db, session, _id);
       return { teamId, userId, teamDeleted: true };
     }
 

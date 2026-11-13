@@ -27,11 +27,12 @@ Route handlers only parse input and call one function in `src/teams.js`. That ke
 | `hackathons` | `_id`, `minTeamSize`, `maxTeamSize`, `inviteTtlHours` | `_id` |
 | `teams` | `hackathonId`, `name`, `leaderId`, `maxSize`, `memberCount`, `openSeats`, `inviteCode`, `inviteExpiresAt`, `lookingForTeammates`, `version`, `createdAt` | unique `inviteCode` (partial); partial board index on `(hackathonId, createdAt desc, _id desc)` for open teams |
 | `memberships` | `hackathonId`, `teamId`, `userId`, `role`, `joinedAt` | unique `(hackathonId, userId)`; `(teamId, joinedAt)` |
+| `joinRequests` | `hackathonId`, `teamId`, `userId`, `status` (pending, accepted, declined, cancelled), `createdAt`, `decidedAt` | unique `(teamId, userId)` where status is pending; `(teamId, status, createdAt)`; `(hackathonId, userId, status)` |
 | `users` | seed data only; no API yet | `_id` |
 
 `memberCount` and `openSeats` are stored on the team and kept in step by the same atomic update, so the board never has to count rows.
 
-Planned collections, not built: `joinRequests`, `idempotencyKeys`, `auditLog`.
+Planned collections, not built: `idempotencyKeys`, `auditLog`.
 
 ## 4. How concurrency is handled
 
@@ -56,6 +57,14 @@ Leaving deletes the membership and decrements the count in one transaction. If t
 
 Removing a member and regenerating a code match on `leaderId` inside the update filter itself, so a leadership change that lands mid-request cannot be bypassed by a stale check.
 
+### Join requests
+
+Accepting a request is one transaction with four steps. (1) Claim a seat with a filter that also requires `leaderId` to be the caller, so a leadership change mid-flight cannot be bypassed and a non-leader learns nothing about the request. (2) Flip the request from pending to accepted; if it is no longer pending the transaction aborts and the seat claim rolls back. (3) Insert the membership; the unique index rejects someone who is already in a team. (4) Void the requester's other pending requests.
+
+The races this resolves: two accepts for one free seat (one wins, the other gets `TEAM_FULL` and its request stays pending); an accept racing the requester joining another team (exactly one succeeds, because both touch the same request document); an accept racing the leader leaving (the accept either commits first, or finds a different leader and gets 403). Joining or creating a team, and deleting a team, void the relevant pending requests inside the same transaction.
+
+A request created in the instant after its author joined a team can slip past the creation-time check (snapshot isolation allows this write skew). Accepting it fails on the unique membership index, the request is voided, and the leader gets `REQUESTER_UNAVAILABLE`.
+
 ## 5. Invariants
 
 A checker (`src/invariants.js`) runs after every concurrency test and at the end of the seed script:
@@ -65,6 +74,7 @@ A checker (`src/invariants.js`) runs after every concurrency test and at the end
 - I-3: a user has at most one membership per hackathon.
 - I-4: every team has at least one member and exactly one leader membership, matching `leaderId`.
 - I-5: no membership rows exist for a team that does not exist.
+- I-6: no pending join request exists for a team that does not exist.
 
 ## 6. Read path
 
@@ -91,7 +101,7 @@ The board query filters open teams in one hackathon, sorted newest first, limite
 
 ## 9. Not built yet
 
-Join requests, real authentication, idempotency keys, audit log, rate limits, input validation with a schema library, live updates, teammate suggestions, the UI, deployment.
+Real authentication, idempotency keys, audit log, rate limits, input validation with a schema library, live updates, teammate suggestions, the UI, deployment.
 
 ## 10. With one more week
 

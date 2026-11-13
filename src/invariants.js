@@ -38,6 +38,13 @@ export async function checkInvariants(db) {
     if (!teamIds.has(key)) problems.push(`I-5 memberships exist for missing team ${key}`);
   }
 
+  // I-6: no pending join request may point at a team that does not exist.
+  for await (const r of db.collection('joinRequests').find({ status: 'pending' }, { projection: { teamId: 1 } })) {
+    if (!teamIds.has(String(r.teamId))) {
+      problems.push(`I-6 pending join request ${r._id} for missing team ${r.teamId}`);
+    }
+  }
+
   const dupes = await memberships
     .aggregate([
       { $group: { _id: { h: '$hackathonId', u: '$userId' }, n: { $sum: 1 } } },

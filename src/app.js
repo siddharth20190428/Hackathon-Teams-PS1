@@ -10,6 +10,13 @@ import {
   getTeam,
 } from './teams.js';
 import { createBoardCache } from './boardCache.js';
+import {
+  createJoinRequest,
+  listJoinRequests,
+  acceptJoinRequest,
+  declineJoinRequest,
+  cancelJoinRequest,
+} from './requests.js';
 
 const BOARD_LIMIT = 20;
 
@@ -28,11 +35,12 @@ export function createApp(db, client, options = {}) {
   });
 
   // Any successful write may change the board, so drop the cache just before answering.
+  // Routes that cannot change the board set res.locals.skipBoardInvalidation.
   app.use((req, res, next) => {
     if (req.method !== 'GET') {
       const json = res.json.bind(res);
       res.json = (body) => {
-        if (res.statusCode < 400) boardCache.invalidate();
+        if (res.statusCode < 400 && !res.locals.skipBoardInvalidation) boardCache.invalidate();
         return json(body);
       };
     }
@@ -100,6 +108,62 @@ export function createApp(db, client, options = {}) {
           teamId: req.params.id,
           actorId: req.userId,
           targetUserId: req.params.uid,
+        }),
+      );
+    }),
+  );
+
+  app.post(
+    '/teams/:id/join-requests',
+    wrap(async (req, res) => {
+      res.locals.skipBoardInvalidation = true; // a request does not change the board
+      res.status(201).json(await createJoinRequest(db, { teamId: req.params.id, userId: req.userId }));
+    }),
+  );
+
+  app.get(
+    '/teams/:id/join-requests',
+    wrap(async (req, res) => {
+      res.json(await listJoinRequests(db, { teamId: req.params.id, actorId: req.userId }));
+    }),
+  );
+
+  app.post(
+    '/teams/:id/join-requests/:rid/accept',
+    wrap(async (req, res) => {
+      res.json(
+        await acceptJoinRequest(db, client, {
+          teamId: req.params.id,
+          requestId: req.params.rid,
+          actorId: req.userId,
+        }),
+      );
+    }),
+  );
+
+  app.post(
+    '/teams/:id/join-requests/:rid/decline',
+    wrap(async (req, res) => {
+      res.locals.skipBoardInvalidation = true; // declining does not change the board
+      res.json(
+        await declineJoinRequest(db, client, {
+          teamId: req.params.id,
+          requestId: req.params.rid,
+          actorId: req.userId,
+        }),
+      );
+    }),
+  );
+
+  app.delete(
+    '/teams/:id/join-requests/:rid',
+    wrap(async (req, res) => {
+      res.locals.skipBoardInvalidation = true; // cancelling does not change the board
+      res.json(
+        await cancelJoinRequest(db, {
+          teamId: req.params.id,
+          requestId: req.params.rid,
+          userId: req.userId,
         }),
       );
     }),

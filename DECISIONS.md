@@ -64,4 +64,12 @@ Rule agreed after the 60-second runs: if p95 is above 200 ms, or the margin is u
 
 What was built: an in-process cache of the serialized board response (TTL 2 s by default; `BOARD_CACHE_TTL_MS=0` turns it off). Concurrent misses share one database load. Every successful write (any non-GET request answered with a status below 400) invalidates the whole cache just before the response is sent, and a load that was already running when the invalidation happened is not stored, so a stale read cannot outlive a write. At most 1,000 keys are kept, so random hackathon ids in the URL cannot grow it without bound. The board has no per-user content, so one cached body serves everyone. It also keeps the deployed site far below the Atlas M0 limit of about 100 operations per second.
 
-Cost: single instance only. Another process would not see our invalidations; the TTL bounds the staleness, and change streams are the upgrade. Status: built, not yet measured.
+Cost: single instance only. Another process would not see our invalidations; the TTL bounds the staleness, and change streams are the upgrade. Status: built and measured. With the cache on, p95 was 39 to 42 ms in five runs (about 80% margin) at 5,000 to 5,400 requests per second; with `BOARD_CACHE_TTL_MS=0` on the same code, p95 was 145 to 159 ms at about 1,000 requests per second. See PERFORMANCE.md.
+
+## D21. Join request rules
+- At most one pending request per person per team (partial unique index); a declined or cancelled person may ask again, and a person may have pending requests to several teams.
+- Creating a request is rejected if the person is already in a team or the team is full, but those checks are not atomic with later events, so acceptance re-checks everything atomically.
+- Accepting claims the seat first, with the leader check inside the filter, then decides the request, then inserts the membership (see DESIGN.md).
+- Joining or creating a team voids the person's other pending requests; deleting a team voids its pending requests, all inside the same transaction.
+- A request that creates, declines or cancels does not change the board, so it does not invalidate the board cache; accepting does.
+- Evidence: 12 tests, including three races (two accepts for one seat, accept versus the requester joining elsewhere, accept versus the leader leaving).

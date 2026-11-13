@@ -46,7 +46,13 @@ The project was built in small patches. Each one was run against the tests, and 
 
 **Why:** after the index, p95 ranged from 150 to 207 ms across seven runs. A pass that depends on luck is not a pass, and the deployed database (Atlas M0, about 100 operations per second) could not serve the load without a cache anyway.
 **What:** an in-process cache of the serialized board response with a 2 s TTL, shared between concurrent requests and invalidated before the response of every successful write. Unit tests for the cache (including a load that overlaps an invalidation) and API tests for freshness after create, join, leave and delete.
-**Result:** not measured yet. This section is completed after the load runs.
+**Result:** with the cache on, p95 was 39 to 42 ms in five runs (three of 30 s, two of 60 s) at 5,000 to 5,400 requests per second. The same code with `BOARD_CACHE_TTL_MS=0` gave 145 to 159 ms at about 1,000 requests per second. So the cache cut p95 about 3.7 times and raised throughput about 5 times, and the margin against the target went from as little as 2% to about 80%. The multi-second latency outliers appeared only in the cache-off runs, which places them on the database path. Caveats: the test is read-only and hits one key, k6 and Node share the two cores at this rate, and the effect under concurrent writes is not measured yet. 36 tests green.
+
+## v7: join requests (patch 0011)
+
+**Why:** joining by code is only one of the two ways in; the other is asking the leader. It is also the richest source of races, because a request outlives the moment it was made.
+**What:** request, list, accept, decline and cancel. Accept is one transaction (seat claim with the leader check in the filter, request decision, membership insert, voiding the requester's other requests). Joining or creating a team and deleting a team void pending requests in the same transaction. Requests, declines and cancellations do not invalidate the board cache.
+**Result:** see the test run recorded after this patch was applied; 12 new tests, 48 in total.
 
 ## Decisions outside the patches
 
@@ -55,4 +61,4 @@ The project was built in small patches. Each one was run against the tests, and 
 
 ## Next
 
-Board cache, then join requests, then authentication, idempotency keys and the audit log, then live updates and the UI, then deployment.
+Authentication, idempotency keys and the audit log, then live updates and the UI, then deployment.

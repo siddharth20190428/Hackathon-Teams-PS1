@@ -21,7 +21,7 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-36 tests in 6 files.
+48 tests in 7 files.
 
 | File | Tests |
 |---|---|
@@ -31,10 +31,11 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 | `test/invite.test.js` | Code format and uniqueness (2,000 codes). Normalization. Default 48 h expiry. Correct code in any case. T9 wrong and malformed codes, including operator-injection payloads. T8 expired code. Full team. Already in a team. Direct join by id is gone. Codes never appear on the board or team view. Only the leader can read or regenerate the code. Regeneration invalidates the old code |
 | `test/boardCache.test.js` | Unit tests, no database: concurrent misses share one load; TTL expiry with a fake clock; invalidation drops values; a load running during an invalidation is not stored; errors are not cached; TTL 0 disables the cache; the entry cap evicts |
 | `test/board.test.js` | A new team is on the board immediately after creation, even after a cached read; a team leaves the board when it fills and returns when someone leaves; a deleted team disappears at once |
+| `test/requests.test.js` | T13 request, list, accept. T14 decline, then ask again. T11 non-leaders cannot list, accept or decline. Cancel by the requester only. Duplicate, own-team and full-team guards. T15 request voided when the requester joins elsewhere first, and a stale pending request voided cleanly. Joining or creating a team voids other requests. T17 last member leaving cancels pending requests. T19 two accepts for one seat (10 rounds). Accept racing the requester joining elsewhere (10 rounds). Accept racing the leader leaving (10 rounds) |
 
 ## Not covered yet
 
-Idempotency replay (T3, T5, T6), rate limiting (T10), join requests (T11, T13 to T15, T19), authentication (T21), audit log (T22), board pagination (T23), suggestions (T24), live updates (T25), and the chaos test (T26).
+Idempotency replay (T3, T5, T6), rate limiting (T10), authentication (T21), audit log (T22), board pagination (T23), suggestions (T24), live updates (T25), and the chaos test (T26).
 
 ## Known limits of these tests
 
