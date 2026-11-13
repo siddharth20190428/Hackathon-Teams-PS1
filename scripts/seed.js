@@ -90,4 +90,5 @@ console.log(
 );
 const problems = await checkInvariants(db);
 console.log(problems.length ? problems.slice(0, 5) : 'invariants ok');
+if (problems.length) process.exitCode = 1;
 await client.close();
