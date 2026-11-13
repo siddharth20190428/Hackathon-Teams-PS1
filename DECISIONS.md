@@ -11,8 +11,8 @@ Reason: multi-document transactions need a replica set. Amended: the `mongodb-me
 ## D3. Seat claim: conditional update + unique index + transaction (amended)
 See DESIGN.md section 4. Amended: the seat claim runs first and the membership insert second, so losers fail fast without writing rows. Evidence: the same race test went from 9 winners for 1 seat (naive) to 0 failures over 45 rounds of 50 contenders.
 
-## D4. Idempotency keys (planned)
-Mutating endpoints will require an `Idempotency-Key` header with a stored response. Until then, the unique membership index prevents duplicate memberships, but a retried request is not replayed identically.
+## D4. Idempotency keys
+Every `POST` and `DELETE` requires an `Idempotency-Key`. The key is claimed with a unique `(userId, key)` insert; parallel duplicates wait and get the same stored answer; the same key with a different request is 422; 5xx releases the key; stale `processing` records are taken over after 30 s; records expire after 24 h. Rejected: caching only successes (a retry after a stored 409 would then behave differently from the original). Cost: one extra write per request, and the stored response is written just before it is sent, so a crash in that window re-runs the operation (safe: the atomic rules underneath still allow one outcome). Evidence: T3 (10 parallel requests, one key), T3b, T4, T5, T6 and four edge-case tests.
 
 ## D5. Live updates: server-sent events (planned)
 One-way updates over plain HTTP with automatic reconnect. Single-instance fan-out; change streams are the upgrade path.
@@ -32,8 +32,8 @@ The spec gives a minimum and a maximum without saying what happens below the min
 ## D10. Leader succession
 When the leader leaves, the remaining member with the earliest `joinedAt` (ties by `_id`) becomes leader.
 
-## D11. Audit log (planned)
-Append-only, written in the same transaction as the change.
+## D11. Audit log
+Append-only, written inside the same transaction as the change, so there is never a change without its entry or an entry without its change. Records actor, target, action, request id and a summary; never invite codes. Members read their team's log. Invariant I-7 reconciles the log with the member count. Cost: one extra write per change.
 
 ## D12. Teammate scoring (planned)
 Weighted skill complement and time-zone fit, with the breakdown returned.
@@ -73,3 +73,6 @@ Cost: single instance only. Another process would not see our invalidations; the
 - Joining or creating a team voids the person's other pending requests; deleting a team voids its pending requests, all inside the same transaction.
 - A request that creates, declines or cancels does not change the board, so it does not invalidate the board cache; accepting does.
 - Evidence: 12 tests, including three races (two accepts for one seat, accept versus the requester joining elsewhere, accept versus the leader leaving).
+
+## D22. Request ids and context
+Each request gets an id (or uses a valid `X-Request-Id` from the client), echoed back in the `X-Request-Id` response header. It travels in an `AsyncLocalStorage` context together with the acting user, so audit entries get the actor and request id without extra arguments. Cost: a small per-request overhead. Measured on the board: none visible (p95 38 to 39 ms before and after); see PERFORMANCE.md.

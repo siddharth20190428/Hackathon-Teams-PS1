@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import {
   createTeam,
   joinByCode,
@@ -10,6 +11,9 @@ import {
   getTeam,
 } from './teams.js';
 import { createBoardCache } from './boardCache.js';
+import { requestContext } from './context.js';
+import { idempotency } from './idempotency.js';
+import { listAudit } from './auditQueries.js';
 import {
   createJoinRequest,
   listJoinRequests,
@@ -33,6 +37,17 @@ export function createApp(db, client, options = {}) {
     if (!req.userId) return res.status(401).json({ error: 'UNAUTHENTICATED' });
     next();
   });
+
+  // Every request gets an id (echoed back) and a context the audit log reads.
+  app.use((req, res, next) => {
+    const incoming = req.get('x-request-id');
+    const requestId = incoming && /^[A-Za-z0-9_.:-]{1,64}$/.test(incoming) ? incoming : randomUUID();
+    res.set('X-Request-Id', requestId);
+    requestContext.run({ requestId, actorId: req.userId }, next);
+  });
+
+  // Retried writes return the stored answer instead of running twice.
+  app.use(idempotency(db));
 
   // Any successful write may change the board, so drop the cache just before answering.
   // Routes that cannot change the board set res.locals.skipBoardInvalidation.
@@ -89,7 +104,7 @@ export function createApp(db, client, options = {}) {
   app.post(
     '/teams/:id/invite/regenerate',
     wrap(async (req, res) => {
-      res.json(await regenerateInvite(db, { teamId: req.params.id, actorId: req.userId }));
+      res.json(await regenerateInvite(db, client, { teamId: req.params.id, actorId: req.userId }));
     }),
   );
 
@@ -117,7 +132,7 @@ export function createApp(db, client, options = {}) {
     '/teams/:id/join-requests',
     wrap(async (req, res) => {
       res.locals.skipBoardInvalidation = true; // a request does not change the board
-      res.status(201).json(await createJoinRequest(db, { teamId: req.params.id, userId: req.userId }));
+      res.status(201).json(await createJoinRequest(db, client, { teamId: req.params.id, userId: req.userId }));
     }),
   );
 
@@ -160,11 +175,20 @@ export function createApp(db, client, options = {}) {
     wrap(async (req, res) => {
       res.locals.skipBoardInvalidation = true; // cancelling does not change the board
       res.json(
-        await cancelJoinRequest(db, {
+        await cancelJoinRequest(db, client, {
           teamId: req.params.id,
           requestId: req.params.rid,
           userId: req.userId,
         }),
+      );
+    }),
+  );
+
+  app.get(
+    '/teams/:id/audit',
+    wrap(async (req, res) => {
+      res.json(
+        await listAudit(db, { teamId: req.params.id, actorId: req.userId, limit: req.query.limit }),
       );
     }),
   );

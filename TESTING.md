@@ -21,7 +21,7 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-48 tests in 7 files.
+66 tests in 9 files.
 
 | File | Tests |
 |---|---|
@@ -32,10 +32,12 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 | `test/boardCache.test.js` | Unit tests, no database: concurrent misses share one load; TTL expiry with a fake clock; invalidation drops values; a load running during an invalidation is not stored; errors are not cached; TTL 0 disables the cache; the entry cap evicts |
 | `test/board.test.js` | A new team is on the board immediately after creation, even after a cached read; a team leaves the board when it fills and returns when someone leaves; a deleted team disappears at once |
 | `test/requests.test.js` | T13 request, list, accept. T14 decline, then ask again. T11 non-leaders cannot list, accept or decline. Cancel by the requester only. Duplicate, own-team and full-team guards. T15 request voided when the requester joins elsewhere first, and a stale pending request voided cleanly. Joining or creating a team voids other requests. T17 last member leaving cancels pending requests. T19 two accepts for one seat (10 rounds). Accept racing the requester joining elsewhere (10 rounds). Accept racing the leader leaving (10 rounds) |
+| `test/idempotency.test.js` | Request hashing ignores key order. Missing and malformed keys rejected; reads need none. T5 replay returns the identical stored response. T6 same key with a different request is 422. T3 ten parallel requests with one key run once (AC-3). T3b ten parallel joins with one key. T4 double-clicked create-team. Keys are scoped per user. A stored failure is replayed after the situation changes. A stale `processing` record is taken over. The stored record shape |
+| `test/audit.test.js` | T22 every change has an entry with actor, target and request id. Join-request decisions. Leader succession and departure. A failed action leaves no entry. A deleted team keeps its history. Members only, and no invite codes in the log. I-7 detects a tampered member count |
 
 ## Not covered yet
 
-Idempotency replay (T3, T5, T6), rate limiting (T10), authentication (T21), audit log (T22), board pagination (T23), suggestions (T24), live updates (T25), and the chaos test (T26).
+Rate limiting (T10), authentication (T21), board pagination (T23), suggestions (T24), live updates (T25), and the chaos test (T26).
 
 ## Known limits of these tests
 

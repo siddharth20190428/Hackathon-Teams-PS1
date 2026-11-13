@@ -17,21 +17,27 @@ export async function setup() {
   const server = createApp(db, client).listen(0);
   const base = `http://127.0.0.1:${server.address().port}`;
 
-  const call = async (method, path, userId, body) => {
+  // Every write gets a fresh Idempotency-Key unless the test passes its own in `headers`
+  // (set a header to null to send none).
+  const call = async (method, path, userId, body, headers = {}) => {
+    const merged = {
+      'content-type': 'application/json',
+      ...(userId ? { 'x-user-id': userId } : {}),
+      ...(method === 'GET' ? {} : { 'idempotency-key': randomUUID() }),
+      ...headers,
+    };
+    for (const k of Object.keys(merged)) if (merged[k] == null) delete merged[k];
     const res = await fetch(base + path, {
       method,
-      headers: {
-        'content-type': 'application/json',
-        ...(userId ? { 'x-user-id': userId } : {}),
-      },
+      headers: merged,
       body: body ? JSON.stringify(body) : undefined,
     });
-    return { status: res.status, body: await res.json().catch(() => null) };
+    return { status: res.status, body: await res.json().catch(() => null), headers: res.headers };
   };
 
   const codeOf = async (teamId) =>
     (await db.collection('teams').findOne({ _id: new ObjectId(teamId) }))?.inviteCode;
-  const joinByCode = (code, userId) => call('POST', '/hackathons/h1/join-by-code', userId, { code });
+  const joinByCode = (code, userId, headers) => call('POST', '/hackathons/h1/join-by-code', userId, { code }, headers);
   // Convenience for sequential setup. Races read the code first and use joinByCode.
   const join = async (teamId, userId) => joinByCode((await codeOf(teamId)) ?? 'ZZZZZZZZZZ', userId);
 

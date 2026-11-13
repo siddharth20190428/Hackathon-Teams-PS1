@@ -30,6 +30,9 @@ Target: board endpoint p95 under 200 ms with 100 concurrent users on a dataset o
 | v6 board cache on | 30 s, run 3 | 5264.2 | 16.2 | 32.9 | 40.2 | 60.3 | 162.9 | passed (about 80% margin) |
 | v6 board cache on | 60 s, run 1 | 5351.5 | 16.1 | 32.1 | 39.3 | 56.1 | 153.4 | passed (about 80% margin) |
 | v6 board cache on | 60 s, run 2 | 5380.4 | 16.0 | 31.8 | 39.0 | 57.0 | 159.0 | passed (about 80% margin) |
+| v8 idempotency, audit, request ids (cache on) | 30 s, run 1 | 5411.2 | 15.7 | 31.8 | 39.3 | 56.7 | 385.5 | passed (about 80% margin) |
+| v8 idempotency, audit, request ids (cache on) | 30 s, run 2 | 5415.2 | 15.8 | 31.8 | 39.3 | 56.2 | 114.4 | passed (about 80% margin) |
+| v8 idempotency, audit, request ids (cache on) | 30 s, run 3 | 5569.1 | 15.3 | 31.1 | 38.1 | 54.6 | 102.1 | passed (about 81% margin) |
 | v6 board cache off (`BOARD_CACHE_TTL_MS=0`) | 30 s, run 1 | 954.6 | 96.7 | 142.3 | 158.7 | 200.0 | 1894.8 | passed (21% margin) |
 | v6 board cache off (`BOARD_CACHE_TTL_MS=0`) | 30 s, run 2 | 1017.2 | 91.4 | 132.9 | 152.2 | 203.1 | 1860.2 | passed (24% margin) |
 | v6 board cache off (`BOARD_CACHE_TTL_MS=0`) | 30 s, run 3 | 1022.0 | 91.6 | 130.4 | 145.1 | 179.1 | 2319.8 | passed (27% margin) |
@@ -44,6 +47,10 @@ All times are in milliseconds. Every run had a 0% error rate. v1 and v3 did not 
 4. **Tail outliers.** In six of nine runs the maximum latency exceeded 1.7 s, although the last two runs peaked under 1 s. The cause is not known; connection warm-up, garbage collection and CPU contention with k6 are candidates, none tested (see point 6 for where it does and does not occur).
 5. **The board cache fixed the margin.** With the cache on, p95 was 40.2, 41.2 and 42.4 ms in the 30 s runs and 39.0 and 39.3 ms in the 60 s runs, at 5,000 to 5,400 requests per second. The same code with the cache off gave 145.1, 152.2 and 158.7 ms at about 1,000 requests per second, in line with v2 and v4. The cache therefore lowered p95 about 3.7 times and raised throughput about 5 times, and the margin against the 200 ms target went from as little as 2% to about 80%. The average latency still follows the formula above: 100 / 5,236 is 19.1 ms, measured 18.9 ms.
 6. **The multi-second outliers belong to the database path.** With the cache on, the maximum latency never exceeded 165 ms; the three cache-off runs peaked at 1.9 to 2.3 s. So the outliers come from the query path (candidates: connection warm-up, scan and sort contention), not from Node's HTTP handling. Not investigated further.
+
+## After idempotency, audit and request ids (v8)
+
+Patch 0012 adds an `AsyncLocalStorage` context and a request id to every request, and an extra write per mutation; reads skip the idempotency step. Three 30 s board runs after it gave p95 of 38.1 to 39.3 ms at 5,400 to 5,570 requests per second, the same as v6 (39.0 to 42.4 ms), so the read path shows no measurable cost. The write paths were not load-tested; they cost one extra database write each.
 
 ## Caveats
 

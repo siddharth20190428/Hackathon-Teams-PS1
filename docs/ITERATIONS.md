@@ -54,6 +54,12 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** request, list, accept, decline and cancel. Accept is one transaction (seat claim with the leader check in the filter, request decision, membership insert, voiding the requester's other requests). Joining or creating a team and deleting a team void pending requests in the same transaction. Requests, declines and cancellations do not invalidate the board cache.
 **Result:** see the test run recorded after this patch was applied; 12 new tests, 48 in total.
 
+## v8: idempotency keys and audit log (patch 0012)
+
+**Why:** a retried request (double click, flaky network) must not run twice, and every change to a team needs a record of who made it. Both were planned requirements; the audit log also lets the invariant checker cross-check member counts (I-7).
+**What:** every write requires an `Idempotency-Key`; the key is claimed with a unique insert, parallel duplicates wait for the first to finish and return the same answer, and a key reused for a different request gets 422. Each state change writes an audit entry in the same transaction. Requests carry an id (`X-Request-Id`) and the acting user through an `AsyncLocalStorage` context. New read endpoint: the team audit log.
+**Result:** 66 tests green (one assertion in my own test needed a fix, patch 0013: the stored record keeps the raw ObjectId while the replayed JSON is identical). The seed passes all invariants. The board was re-measured: p95 of 38.1 to 39.3 ms over three 30 s runs, unchanged from v6, so request ids and the context cost nothing measurable on reads. Writes were not load-tested.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.
@@ -61,4 +67,4 @@ The project was built in small patches. Each one was run against the tests, and 
 
 ## Next
 
-Authentication, idempotency keys and the audit log, then live updates and the UI, then deployment.
+Real authentication and rate limits, then live updates and the UI, then deployment.

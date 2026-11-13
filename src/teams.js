@@ -3,6 +3,7 @@ import { httpError } from './errors.js';
 import { runTransaction } from './tx.js';
 import { newInviteCode, normalizeCode, isValidCode } from './inviteCodes.js';
 import { cancelUserRequests, cancelTeamRequests } from './requestCleanup.js';
+import { audit } from './audit.js';
 
 export const toId = (s) => {
   if (!ObjectId.isValid(s)) throw httpError(404, 'NOT_FOUND');
@@ -49,6 +50,13 @@ export async function createTeam(db, client, { hackathonId, userId, name }) {
         await db.collection('teams').insertOne(team, { session });
         // Asking to join other teams is moot once you lead your own.
         await cancelUserRequests(db, session, hackathonId, userId);
+        await audit(db, session, {
+          action: 'TEAM_CREATED',
+          hackathonId,
+          teamId: team._id,
+          targetUserId: userId,
+          summary: { name: team.name },
+        });
       });
       return team;
     } catch (err) {
@@ -78,6 +86,13 @@ async function addMember(db, session, { filter, userId }) {
   );
   // Joining a team voids the person's other pending join requests.
   await cancelUserRequests(db, session, team.hackathonId, userId);
+  await audit(db, session, {
+    action: 'MEMBER_JOINED',
+    hackathonId: team.hackathonId,
+    teamId: team._id,
+    targetUserId: userId,
+    summary: { via: 'invite_code' },
+  });
   return team;
 }
 
@@ -119,7 +134,7 @@ export async function getInvite(db, { teamId, actorId }) {
   return { inviteCode: team.inviteCode, inviteExpiresAt: team.inviteExpiresAt };
 }
 
-export async function regenerateInvite(db, { teamId, actorId }) {
+export async function regenerateInvite(db, client, { teamId, actorId }) {
   const _id = toId(teamId);
   const current = await db.collection('teams').findOne({ _id }, { projection: { hackathonId: 1 } });
   if (!current) throw httpError(404, 'NOT_FOUND');
@@ -127,17 +142,24 @@ export async function regenerateInvite(db, { teamId, actorId }) {
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      // One atomic update: the leader check and the new code are written together.
-      const team = await db.collection('teams').findOneAndUpdate(
-        { _id, leaderId: actorId },
-        { $set: { inviteCode: newInviteCode(), inviteExpiresAt: inviteExpiry(hack) }, $inc: { version: 1 } },
-        { returnDocument: 'after' },
-      );
-      if (!team) {
-        const exists = await db.collection('teams').findOne({ _id }, { projection: { _id: 1 } });
-        throw httpError(exists ? 403 : 404, exists ? 'NOT_LEADER' : 'NOT_FOUND');
-      }
-      return { inviteCode: team.inviteCode, inviteExpiresAt: team.inviteExpiresAt };
+      return await runTransaction(client, async (session) => {
+        // The leader check and the new code are written together, with the audit entry.
+        const team = await db.collection('teams').findOneAndUpdate(
+          { _id, leaderId: actorId },
+          { $set: { inviteCode: newInviteCode(), inviteExpiresAt: inviteExpiry(hack) }, $inc: { version: 1 } },
+          { returnDocument: 'after', session },
+        );
+        if (!team) {
+          const exists = await db.collection('teams').findOne({ _id }, { session, projection: { _id: 1 } });
+          throw httpError(exists ? 403 : 404, exists ? 'NOT_LEADER' : 'NOT_FOUND');
+        }
+        await audit(db, session, {
+          action: 'INVITE_REGENERATED',
+          hackathonId: team.hackathonId,
+          teamId: _id,
+        });
+        return { inviteCode: team.inviteCode, inviteExpiresAt: team.inviteExpiresAt };
+      });
     } catch (err) {
       if (isInviteCodeCollision(err)) continue;
       throw err;
@@ -179,11 +201,18 @@ export async function leaveTeam(db, client, { teamId, userId }) {
       { returnDocument: 'after', session },
     );
     if (!team) throw new Error(`membership without a team: ${teamId}`);
+    await audit(db, session, {
+      action: 'MEMBER_LEFT',
+      hackathonId: team.hackathonId,
+      teamId: _id,
+      targetUserId: userId,
+    });
 
     if (team.memberCount === 0) {
       await db.collection('teams').deleteOne({ _id }, { session });
       // Nobody can accept a deleted team's pending requests.
       await cancelTeamRequests(db, session, _id);
+      await audit(db, session, { action: 'TEAM_DELETED', hackathonId: team.hackathonId, teamId: _id });
       return { teamId, userId, teamDeleted: true };
     }
 
@@ -199,6 +228,13 @@ export async function leaveTeam(db, client, { teamId, userId }) {
         .collection('teams')
         .updateOne({ _id }, { $set: { leaderId: next.userId, leaderName: next.userId } }, { session });
       await db.collection('memberships').updateOne({ _id: next._id }, { $set: { role: 'leader' } }, { session });
+      await audit(db, session, {
+        action: 'LEADER_CHANGED',
+        hackathonId: team.hackathonId,
+        teamId: _id,
+        targetUserId: next.userId,
+        summary: { from: userId },
+      });
       return { teamId, userId, teamDeleted: false, newLeaderId: next.userId };
     }
 
@@ -226,6 +262,12 @@ export async function removeMember(db, client, { teamId, actorId, targetUserId }
       .findOneAndDelete({ teamId: _id, userId: targetUserId }, { session });
     // Not a member: abort, which rolls back the decrement above.
     if (!removed) throw httpError(404, 'NOT_MEMBER');
+    await audit(db, session, {
+      action: 'MEMBER_REMOVED',
+      hackathonId: team.hackathonId,
+      teamId: _id,
+      targetUserId,
+    });
     return { teamId, removed: targetUserId };
   });
 }

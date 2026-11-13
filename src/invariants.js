@@ -14,10 +14,28 @@ export async function checkInvariants(db) {
     leaders.set(key, [...(leaders.get(key) ?? []), m.userId]);
   }
 
+  // I-7: for teams created through the API, the audit log must add up to the member count.
+  const audited = new Map();
+  for await (const row of db.collection('auditLog').aggregate([
+    { $match: { action: { $in: ['TEAM_CREATED', 'MEMBER_JOINED', 'MEMBER_LEFT', 'MEMBER_REMOVED'] } } },
+    { $group: { _id: { t: '$teamId', a: '$action' }, n: { $sum: 1 } } },
+  ])) {
+    const key = String(row._id.t);
+    audited.set(key, { ...(audited.get(key) ?? {}), [row._id.a]: row.n });
+  }
+
   const teamIds = new Set();
   for await (const t of db.collection('teams').find({})) {
     const key = String(t._id);
     teamIds.add(key);
+    const log = audited.get(key);
+    if (log?.TEAM_CREATED) {
+      const expected =
+        log.TEAM_CREATED + (log.MEMBER_JOINED ?? 0) - (log.MEMBER_LEFT ?? 0) - (log.MEMBER_REMOVED ?? 0);
+      if (expected !== t.memberCount) {
+        problems.push(`I-7 team ${key}: audit log implies ${expected} members, memberCount=${t.memberCount}`);
+      }
+    }
     const n = counts.get(key) ?? 0;
     if (t.memberCount !== n) {
       problems.push(`I-1 team ${key}: memberCount=${t.memberCount}, memberships=${n}`);

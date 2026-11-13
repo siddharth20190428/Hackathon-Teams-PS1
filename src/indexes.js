@@ -5,12 +5,19 @@ const ignoreExists = (err) => {
 // Indexes the correctness rules depend on. Safe to run on every start.
 export async function ensureCoreIndexes(db) {
   // Create collections up front so transactions never have to create them implicitly.
-  for (const name of ['hackathons', 'users', 'teams', 'memberships', 'joinRequests']) {
+  for (const name of ['hackathons', 'users', 'teams', 'memberships', 'joinRequests', 'idempotencyKeys', 'auditLog']) {
     await db.createCollection(name).catch(ignoreExists);
   }
   // One team per person per hackathon: the database enforces it.
   await db.collection('memberships').createIndex({ hackathonId: 1, userId: 1 }, { unique: true });
   await db.collection('memberships').createIndex({ teamId: 1, joinedAt: 1 });
+
+  // Idempotency keys are scoped to the person who sent them; old ones expire after a day.
+  await db.collection('idempotencyKeys').createIndex({ userId: 1, key: 1 }, { unique: true });
+  await db.collection('idempotencyKeys').createIndex({ createdAt: 1 }, { expireAfterSeconds: 24 * 3600 });
+
+  // The audit log is read per team, newest first.
+  await db.collection('auditLog').createIndex({ teamId: 1, ts: -1, _id: -1 });
 
   // At most one pending request per person per team. Decided requests do not count,
   // so a declined person may ask again.

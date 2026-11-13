@@ -17,7 +17,8 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Board p95 under 200 ms at 100 users | Met in all 5 runs with the board cache (p95 39 to 42 ms); without it, the same code lands between 145 and 207 ms. Local, one machine. See [PERFORMANCE.md](PERFORMANCE.md) |
 | Join requests (request, list, accept, decline, cancel) | Done |
 | Real authentication | Not built. A temporary `x-user-id` header names the caller |
-| Idempotency keys, audit log, rate limits, input validation library | Not built |
+| Idempotency keys on every write, audit log per team | Done |
+| Rate limits, input validation library | Not built |
 | Live updates (SSE), teammate suggestions, React UI | Not built |
 | CI | Workflow included; first run to be confirmed |
 | Live deployment | Not deployed yet |
@@ -55,7 +56,7 @@ The seed script refuses to wipe a database whose name does not contain `dev` or 
 4. Try it.
 ```
 curl -s -X POST localhost:3000/hackathons/h1/teams \
-  -H 'x-user-id: alice' -H 'content-type: application/json' -d '{"name":"Dream Team"}'
+  -H 'idempotency-key: demo-0001' -H 'x-user-id: alice' -H 'content-type: application/json' -d '{"name":"Dream Team"}'
 curl -s -H 'x-user-id: alice' localhost:3000/hackathons/h1/board
 ```
 
@@ -75,6 +76,8 @@ curl -s -H 'x-user-id: alice' localhost:3000/hackathons/h1/board
 
 Every route except `/healthz` needs the temporary `x-user-id` header. This is for development only and is not secure.
 
+Every `POST` and `DELETE` also needs an `Idempotency-Key` header (8 to 128 characters: letters, digits, `_ . : -`). Send the same key when retrying a request: the first answer is stored and returned again (with `Idempotent-Replayed: true`) and nothing runs twice. The same key with a different request gets 422. Keys are per user and expire after 24 hours. Every response carries an `X-Request-Id` header (send your own `X-Request-Id` to choose it); the audit log records it.
+
 | Method and path | Who | Result |
 |---|---|---|
 | `GET /healthz` | anyone | `{ ok: true }` |
@@ -89,6 +92,7 @@ Every route except `/healthz` needs the temporary `x-user-id` header. This is fo
 | `POST /teams/:id/join-requests/:rid/accept` | leader | `{ requestId, teamId, userId }`; the requester becomes a member |
 | `POST /teams/:id/join-requests/:rid/decline` | leader | `{ requestId, status: "declined" }` |
 | `DELETE /teams/:id/join-requests/:rid` | the requester | `{ requestId, status: "cancelled" }` |
+| `GET /teams/:id/audit?limit=50` | team members | `{ entries }`: newest first, at most 200 |
 | `GET /hackathons/:hid/board` | any user | `{ teams }`: open teams, newest first, invite fields hidden |
 | `GET /teams/:id` | any user | the team, invite fields hidden |
 
@@ -96,12 +100,13 @@ Errors are JSON of the form `{ "error": "CODE" }`.
 
 | Status | Codes |
 |---|---|
-| 400 | `INVALID_NAME`, `INVALID_CODE`, `USE_LEAVE` |
+| 400 | `INVALID_NAME`, `INVALID_CODE`, `USE_LEAVE`, `IDEMPOTENCY_KEY_REQUIRED`, `INVALID_IDEMPOTENCY_KEY` |
 | 401 | `UNAUTHENTICATED` |
-| 403 | `NOT_LEADER` |
+| 403 | `NOT_LEADER`, `NOT_MEMBER` (audit log) |
 | 404 | `NOT_FOUND`, `HACKATHON_NOT_FOUND`, `INVALID_CODE` (unknown code), `NOT_MEMBER` |
-| 409 | `ALREADY_IN_TEAM`, `TEAM_FULL`, `ALREADY_REQUESTED`, `ALREADY_DECIDED`, `REQUESTER_UNAVAILABLE` |
+| 409 | `ALREADY_IN_TEAM`, `TEAM_FULL`, `ALREADY_REQUESTED`, `ALREADY_DECIDED`, `REQUESTER_UNAVAILABLE`, `IDEMPOTENCY_IN_PROGRESS` |
 | 410 | `CODE_EXPIRED` |
+| 422 | `IDEMPOTENCY_KEY_REUSED` |
 
 There is deliberately no way to join a team by its id alone. Joining needs an invite code or an accepted join request.
 
@@ -115,6 +120,9 @@ src/indexes.js      The indexes the rules depend on
 src/invariants.js   Consistency checker used by tests and the seed script
 src/inviteCodes.js  Invite code generation and normalization
 src/requests.js     Join requests: create, list, accept, decline, cancel
+src/idempotency.js  Idempotency-Key middleware
+src/audit.js        Audit entries, written inside each transaction
+src/context.js      Per-request id and actor
 src/requestCleanup.js  Voiding join requests when people join or teams are deleted
 src/boardCache.js   In-process cache for the board response
 scripts/seed.js     Seed data and invariant check

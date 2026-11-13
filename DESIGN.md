@@ -32,7 +32,8 @@ Route handlers only parse input and call one function in `src/teams.js`. That ke
 
 `memberCount` and `openSeats` are stored on the team and kept in step by the same atomic update, so the board never has to count rows.
 
-Planned collections, not built: `idempotencyKeys`, `auditLog`.
+| `idempotencyKeys` | `userId`, `key`, `requestHash`, `state` (processing or done), `status`, `body`, `startedAt`, `createdAt` | unique `(userId, key)`; TTL on `createdAt` (24 h) |
+| `auditLog` | `ts`, `actorId`, `requestId`, `action`, `hackathonId`, `teamId`, `targetUserId`, `summary` | `(teamId, ts desc, _id desc)` |
 
 ## 4. How concurrency is handled
 
@@ -57,6 +58,14 @@ Leaving deletes the membership and decrements the count in one transaction. If t
 
 Removing a member and regenerating a code match on `leaderId` inside the update filter itself, so a leadership change that lands mid-request cannot be bypassed by a stale check.
 
+### Idempotency
+
+Every `POST` and `DELETE` carries an `Idempotency-Key`. The middleware claims the key by inserting a record under the unique `(userId, key)` index, so exactly one of many parallel duplicates runs the request. The others poll until the record is finished and then return the stored status and body, so all ten answers are identical. A key sent with a different method, path, query or body is rejected with 422, because it no longer means the same request. A server error (5xx) releases the key so a retry really runs again; a 4xx answer is a real answer and is stored. A record stuck in `processing` for 30 seconds (the server died mid-request) is taken over by the next retry. The stored response is written just before it is sent, so a crash in that window means the retry runs the operation again. That is safe because the rules underneath are idempotent in effect: the unique membership index and the atomic seat claim still allow at most one outcome.
+
+### Audit log
+
+Each state change writes its audit entry inside the same transaction, so a change and its log entry commit together or not at all, and a failed action leaves nothing behind. Entries record who acted (from the request context), the target user, the action, the request id (echoed to the client as `X-Request-Id`) and a small summary. Invite codes are never written to it. Team members can read their team's log; a deleted team's history stays in the database but has no endpoint.
+
 ### Join requests
 
 Accepting a request is one transaction with four steps. (1) Claim a seat with a filter that also requires `leaderId` to be the caller, so a leadership change mid-flight cannot be bypassed and a non-leader learns nothing about the request. (2) Flip the request from pending to accepted; if it is no longer pending the transaction aborts and the seat claim rolls back. (3) Insert the membership; the unique index rejects someone who is already in a team. (4) Void the requester's other pending requests.
@@ -75,6 +84,7 @@ A checker (`src/invariants.js`) runs after every concurrency test and at the end
 - I-4: every team has at least one member and exactly one leader membership, matching `leaderId`.
 - I-5: no membership rows exist for a team that does not exist.
 - I-6: no pending join request exists for a team that does not exist.
+- I-7: for a team created through the API, creations plus joins minus leaves and removals in the audit log equal `memberCount`. Seeded teams have no log entries and are skipped.
 
 ## 6. Read path
 
@@ -101,7 +111,7 @@ The board query filters open teams in one hackathon, sorted newest first, limite
 
 ## 9. Not built yet
 
-Real authentication, idempotency keys, audit log, rate limits, input validation with a schema library, live updates, teammate suggestions, the UI, deployment.
+Real authentication, rate limits, input validation with a schema library, live updates, teammate suggestions, the UI, deployment.
 
 ## 10. With one more week
 

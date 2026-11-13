@@ -3,6 +3,7 @@ import { httpError } from './errors.js';
 import { runTransaction } from './tx.js';
 import { toId, isMembershipDuplicate } from './teams.js';
 import { cancelUserRequests } from './requestCleanup.js';
+import { audit } from './audit.js';
 
 const isDuplicateKey = (err) => err?.code === 11000;
 
@@ -13,7 +14,7 @@ async function leaderOrThrow(db, _id, actorId, options = {}) {
   throw httpError(exists ? 403 : 404, exists ? 'NOT_LEADER' : 'NOT_FOUND');
 }
 
-export async function createJoinRequest(db, { teamId, userId }) {
+export async function createJoinRequest(db, client, { teamId, userId }) {
   const _id = toId(teamId);
   const team = await db.collection('teams').findOne({ _id }, { projection: { hackathonId: 1, openSeats: 1 } });
   if (!team) throw httpError(404, 'NOT_FOUND');
@@ -33,7 +34,16 @@ export async function createJoinRequest(db, { teamId, userId }) {
   };
   try {
     // The partial unique index on (teamId, userId) where status is pending rejects a duplicate.
-    await db.collection('joinRequests').insertOne(request);
+    await runTransaction(client, async (session) => {
+      await db.collection('joinRequests').insertOne(request, { session });
+      await audit(db, session, {
+        action: 'JOIN_REQUESTED',
+        hackathonId: team.hackathonId,
+        teamId: _id,
+        targetUserId: userId,
+        summary: { requestId: String(request._id) },
+      });
+    });
   } catch (err) {
     if (isDuplicateKey(err)) throw httpError(409, 'ALREADY_REQUESTED');
     throw err;
@@ -95,6 +105,13 @@ export async function acceptJoinRequest(db, client, { teamId, requestId, actorId
 
       // 4. Their other pending requests are now void.
       await cancelUserRequests(db, session, team.hackathonId, request.userId);
+      await audit(db, session, {
+        action: 'MEMBER_JOINED',
+        hackathonId: team.hackathonId,
+        teamId: _id,
+        targetUserId: request.userId,
+        summary: { via: 'join_request', requestId: String(rid) },
+      });
       return { requestId: String(rid), teamId, userId: request.userId };
     });
   } catch (err) {
@@ -131,23 +148,39 @@ export async function declineJoinRequest(db, client, { teamId, requestId, actorI
         .findOne({ _id: rid, teamId: _id }, { session, projection: { _id: 1 } });
       throw httpError(known ? 409 : 404, known ? 'ALREADY_DECIDED' : 'NOT_FOUND');
     }
+    await audit(db, session, {
+      action: 'JOIN_REQUEST_DECLINED',
+      hackathonId: request.hackathonId,
+      teamId: _id,
+      targetUserId: request.userId,
+      summary: { requestId: String(rid) },
+    });
     return { requestId: String(rid), status: 'declined' };
   });
 }
 
-export async function cancelJoinRequest(db, { teamId, requestId, userId }) {
+export async function cancelJoinRequest(db, client, { teamId, requestId, userId }) {
   const _id = toId(teamId);
   const rid = toId(requestId);
-  const request = await db.collection('joinRequests').findOneAndUpdate(
-    { _id: rid, teamId: _id, userId, status: 'pending' },
-    { $set: { status: 'cancelled', decidedAt: new Date() } },
-    { returnDocument: 'after' },
-  );
-  if (!request) {
-    const mine = await db
-      .collection('joinRequests')
-      .findOne({ _id: rid, teamId: _id, userId }, { projection: { _id: 1 } });
-    throw httpError(mine ? 409 : 404, mine ? 'ALREADY_DECIDED' : 'NOT_FOUND');
-  }
-  return { requestId: String(rid), status: 'cancelled' };
+  return runTransaction(client, async (session) => {
+    const request = await db.collection('joinRequests').findOneAndUpdate(
+      { _id: rid, teamId: _id, userId, status: 'pending' },
+      { $set: { status: 'cancelled', decidedAt: new Date() } },
+      { returnDocument: 'after', session },
+    );
+    if (!request) {
+      const mine = await db
+        .collection('joinRequests')
+        .findOne({ _id: rid, teamId: _id, userId }, { session, projection: { _id: 1 } });
+      throw httpError(mine ? 409 : 404, mine ? 'ALREADY_DECIDED' : 'NOT_FOUND');
+    }
+    await audit(db, session, {
+      action: 'JOIN_REQUEST_CANCELLED',
+      hackathonId: request.hackathonId,
+      teamId: _id,
+      targetUserId: userId,
+      summary: { requestId: String(rid) },
+    });
+    return { requestId: String(rid), status: 'cancelled' };
+  });
 }
