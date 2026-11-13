@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import { httpError } from './errors.js';
 import { runTransaction } from './tx.js';
+import { newInviteCode, normalizeCode, isValidCode } from './inviteCodes.js';
 
 const toId = (s) => {
   if (!ObjectId.isValid(s)) throw httpError(404, 'NOT_FOUND');
@@ -8,78 +9,142 @@ const toId = (s) => {
 };
 
 const isDuplicateKey = (err) => err?.code === 11000;
+const isInviteCodeCollision = (err) => isDuplicateKey(err) && err.keyPattern?.inviteCode !== undefined;
+const isMembershipDuplicate = (err) => isDuplicateKey(err) && !isInviteCodeCollision(err);
+
+// Invite codes are secrets: they never appear on the board or on the public team view.
+const PUBLIC_TEAM = { inviteCode: 0, inviteExpiresAt: 0 };
+
+const inviteExpiry = (hack) => new Date(Date.now() + (hack?.inviteTtlHours ?? 48) * 3600 * 1000);
 
 export async function createTeam(db, client, { hackathonId, userId, name }) {
   const hack = await db.collection('hackathons').findOne({ _id: hackathonId });
   if (!hack) throw httpError(404, 'HACKATHON_NOT_FOUND');
   if (typeof name !== 'string' || !name.trim()) throw httpError(400, 'INVALID_NAME');
 
-  const team = {
-    _id: new ObjectId(),
-    hackathonId,
-    name: name.trim(),
-    leaderId: userId,
-    leaderName: userId,
-    maxSize: hack.maxTeamSize,
-    memberCount: 1,
-    openSeats: hack.maxTeamSize - 1,
-    lookingForTeammates: true,
-    version: 1,
-    createdAt: new Date(),
-  };
-
-  try {
-    await runTransaction(client, async (session) => {
-      // Membership first: the unique index rejects a second team for the same person.
-      await db.collection('memberships').insertOne(
-        { hackathonId, teamId: team._id, userId, role: 'leader', joinedAt: new Date() },
-        { session },
-      );
-      await db.collection('teams').insertOne(team, { session });
-    });
-  } catch (err) {
-    if (isDuplicateKey(err)) throw httpError(409, 'ALREADY_IN_TEAM');
-    throw err;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const team = {
+      _id: new ObjectId(),
+      hackathonId,
+      name: name.trim(),
+      leaderId: userId,
+      leaderName: userId,
+      maxSize: hack.maxTeamSize,
+      memberCount: 1,
+      openSeats: hack.maxTeamSize - 1,
+      inviteCode: newInviteCode(),
+      inviteExpiresAt: inviteExpiry(hack),
+      lookingForTeammates: true,
+      version: 1,
+      createdAt: new Date(),
+    };
+    try {
+      await runTransaction(client, async (session) => {
+        // Membership first: the unique index rejects a second team for the same person.
+        await db.collection('memberships').insertOne(
+          { hackathonId, teamId: team._id, userId, role: 'leader', joinedAt: new Date() },
+          { session },
+        );
+        await db.collection('teams').insertOne(team, { session });
+      });
+      return team;
+    } catch (err) {
+      if (isInviteCodeCollision(err)) continue; // astronomically rare: draw a new code
+      if (isDuplicateKey(err)) throw httpError(409, 'ALREADY_IN_TEAM');
+      throw err;
+    }
   }
+  throw new Error('could not generate a unique invite code');
+}
+
+// Claims a seat on the team matching `filter` and adds the member, inside the caller's
+// transaction. The filter and the decrement are ONE atomic operation: if nothing matches
+// (team full, code expired, wrong code) we get null and the caller decides what to report.
+async function addMember(db, session, { filter, userId }) {
+  const team = await db.collection('teams').findOneAndUpdate(
+    filter,
+    { $inc: { memberCount: 1, openSeats: -1, version: 1 } },
+    { returnDocument: 'after', session },
+  );
+  if (!team) return null;
+  // The unique (hackathonId, userId) index rejects a second team for this person; the
+  // transaction then aborts and the seat claim above is rolled back.
+  await db.collection('memberships').insertOne(
+    { hackathonId: team.hackathonId, teamId: team._id, userId, role: 'member', joinedAt: new Date() },
+    { session },
+  );
   return team;
 }
 
-export async function joinTeam(db, client, { teamId, userId }) {
-  const _id = toId(teamId);
+export async function joinByCode(db, client, { hackathonId, code, userId }) {
+  const normalized = normalizeCode(code);
+  if (!isValidCode(normalized)) throw httpError(400, 'INVALID_CODE');
+  const now = new Date();
   try {
     return await runTransaction(client, async (session) => {
-      // Claim the seat. The filter and the decrement are ONE atomic operation:
-      // if openSeats is already 0 the filter matches nothing and we get null.
-      const team = await db.collection('teams').findOneAndUpdate(
-        { _id, openSeats: { $gt: 0 } },
-        { $inc: { memberCount: 1, openSeats: -1, version: 1 } },
-        { returnDocument: 'after', session },
-      );
-
+      const team = await addMember(db, session, {
+        filter: { hackathonId, inviteCode: normalized, inviteExpiresAt: { $gt: now }, openSeats: { $gt: 0 } },
+        userId,
+      });
       if (!team) {
-        const exists = await db.collection('teams').findOne({ _id }, { session, projection: { _id: 1 } });
-        if (!exists) throw httpError(404, 'NOT_FOUND');
+        const found = await db
+          .collection('teams')
+          .findOne({ hackathonId, inviteCode: normalized }, { session, projection: { inviteExpiresAt: 1 } });
+        if (!found) throw httpError(404, 'INVALID_CODE');
+        if (found.inviteExpiresAt <= now) throw httpError(410, 'CODE_EXPIRED');
         throw httpError(409, 'TEAM_FULL');
       }
-
-      // The unique (hackathonId, userId) index rejects a second team for this person.
-      // If it does, the whole transaction aborts and the seat claim above is rolled back.
-      await db.collection('memberships').insertOne(
-        { hackathonId: team.hackathonId, teamId: _id, userId, role: 'member', joinedAt: new Date() },
-        { session },
-      );
-      return { teamId, userId };
+      return { teamId: String(team._id), userId };
     });
   } catch (err) {
-    if (isDuplicateKey(err)) throw httpError(409, 'ALREADY_IN_TEAM');
+    if (isMembershipDuplicate(err)) throw httpError(409, 'ALREADY_IN_TEAM');
     throw err;
   }
+}
+
+export async function getInvite(db, { teamId, actorId }) {
+  const _id = toId(teamId);
+  const team = await db
+    .collection('teams')
+    .findOne({ _id, leaderId: actorId }, { projection: { inviteCode: 1, inviteExpiresAt: 1 } });
+  if (!team) {
+    const exists = await db.collection('teams').findOne({ _id }, { projection: { _id: 1 } });
+    throw httpError(exists ? 403 : 404, exists ? 'NOT_LEADER' : 'NOT_FOUND');
+  }
+  return { inviteCode: team.inviteCode, inviteExpiresAt: team.inviteExpiresAt };
+}
+
+export async function regenerateInvite(db, { teamId, actorId }) {
+  const _id = toId(teamId);
+  const current = await db.collection('teams').findOne({ _id }, { projection: { hackathonId: 1 } });
+  if (!current) throw httpError(404, 'NOT_FOUND');
+  const hack = await db.collection('hackathons').findOne({ _id: current.hackathonId });
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      // One atomic update: the leader check and the new code are written together.
+      const team = await db.collection('teams').findOneAndUpdate(
+        { _id, leaderId: actorId },
+        { $set: { inviteCode: newInviteCode(), inviteExpiresAt: inviteExpiry(hack) }, $inc: { version: 1 } },
+        { returnDocument: 'after' },
+      );
+      if (!team) {
+        const exists = await db.collection('teams').findOne({ _id }, { projection: { _id: 1 } });
+        throw httpError(exists ? 403 : 404, exists ? 'NOT_LEADER' : 'NOT_FOUND');
+      }
+      return { inviteCode: team.inviteCode, inviteExpiresAt: team.inviteExpiresAt };
+    } catch (err) {
+      if (isInviteCodeCollision(err)) continue;
+      throw err;
+    }
+  }
+  throw new Error('could not generate a unique invite code');
 }
 
 export async function getBoard(db, { hackathonId, limit = 20 }) {
   const teams = await db
     .collection('teams')
-    .find({ hackathonId, lookingForTeammates: true, openSeats: { $gt: 0 } })
+    .find({ hackathonId, lookingForTeammates: true, openSeats: { $gt: 0 } }, { projection: PUBLIC_TEAM })
     .sort({ createdAt: -1, _id: -1 })
     .limit(limit)
     .toArray();
@@ -87,7 +152,7 @@ export async function getBoard(db, { hackathonId, limit = 20 }) {
 }
 
 export async function getTeam(db, { teamId }) {
-  const team = await db.collection('teams').findOne({ _id: toId(teamId) });
+  const team = await db.collection('teams').findOne({ _id: toId(teamId) }, { projection: PUBLIC_TEAM });
   if (!team) throw httpError(404, 'NOT_FOUND');
   return team;
 }

@@ -12,6 +12,12 @@ export async function ensureCoreIndexes(db) {
   await db.collection('memberships').createIndex({ hackathonId: 1, userId: 1 }, { unique: true });
   await db.collection('memberships').createIndex({ teamId: 1, joinedAt: 1 });
 
+  // Invite codes are unique across teams. Partial, so documents without a code are fine.
+  await db.collection('teams').createIndex(
+    { inviteCode: 1 },
+    { unique: true, partialFilterExpression: { inviteCode: { $type: 'string' } } },
+  );
+
   // Board read path: only open teams, newest first. A partial index keeps it small
   // and matches the board query's filter and sort exactly.
   await db.collection('teams').createIndex(

@@ -20,9 +20,8 @@ describe('join and create rules under concurrency', () => {
       expect(res.status).toBe(201);
       teamIds.push(res.body._id);
     }
-    const results = await Promise.all(
-      teamIds.map((id) => env.call('POST', `/teams/${id}/join`, 't2-joiner')),
-    );
+    const codes = await Promise.all(teamIds.map((id) => env.codeOf(id)));
+    const results = await Promise.all(codes.map((code) => env.joinByCode(code, 't2-joiner')));
     expect(results.filter((r) => r.status === 201)).toHaveLength(1);
     expect(
       results.filter((r) => r.status === 409 && r.body?.error === 'ALREADY_IN_TEAM'),
@@ -51,10 +50,10 @@ describe('join and create rules under concurrency', () => {
     });
     const teamId = created.body._id;
     for (const m of ['a', 'b', 'c']) {
-      const joined = await env.call('POST', `/teams/${teamId}/join`, `t7-${m}`);
+      const joined = await env.join(teamId, `t7-${m}`);
       expect(joined.status).toBe(201);
     }
-    const full = await env.call('POST', `/teams/${teamId}/join`, 't7-late');
+    const full = await env.join(teamId, 't7-late');
     expect(full.status).toBe(409);
     expect(full.body.error).toBe('TEAM_FULL');
     const team = await env.call('GET', `/teams/${teamId}`, 't7-late');

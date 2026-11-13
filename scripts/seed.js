@@ -2,6 +2,7 @@ import { ObjectId } from 'mongodb';
 import { connect } from '../src/db.js';
 import { checkInvariants } from '../src/invariants.js';
 import { ensureCoreIndexes } from '../src/indexes.js';
+import { newInviteCode } from '../src/inviteCodes.js';
 
 const USERS = Number(process.env.SEED_USERS ?? 10000);
 const TEAMS = Number(process.env.SEED_TEAMS ?? 2000);
@@ -26,7 +27,7 @@ await ensureCoreIndexes(db);
 
 await db
   .collection('hackathons')
-  .insertOne({ _id: 'h1', name: 'Seed Hack', minTeamSize: 2, maxTeamSize: MAX });
+  .insertOne({ _id: 'h1', name: 'Seed Hack', minTeamSize: 2, maxTeamSize: MAX, inviteTtlHours: 48 });
 
 const users = Array.from({ length: USERS }, (_, i) => ({
   _id: `u${i}`,
@@ -36,6 +37,15 @@ const users = Array.from({ length: USERS }, (_, i) => ({
   utcOffsetMinutes: OFFSETS[i % OFFSETS.length],
 }));
 await insertBatches(db.collection('users'), users);
+
+const usedCodes = new Set();
+const uniqueCode = () => {
+  let code;
+  do code = newInviteCode();
+  while (usedCodes.has(code));
+  usedCodes.add(code);
+  return code;
+};
 
 const teams = [];
 const memberships = [];
@@ -56,6 +66,8 @@ for (let t = 0; t < TEAMS; t++) {
     maxSize: MAX,
     memberCount: size,
     openSeats: MAX - size,
+    inviteCode: uniqueCode(),
+    inviteExpiresAt: new Date(now + 48 * 3600 * 1000),
     lookingForTeammates: size < MAX,
     version: 1,
     createdAt: new Date(now - t * 1000),

@@ -28,7 +28,7 @@ describe('leaving, removing and leader succession', () => {
     expect(created.status).toBe(201);
     const teamId = created.body._id;
     for (const j of joiners) {
-      const res = await env.call('POST', `/teams/${teamId}/join`, `${prefix}-${j}`);
+      const res = await env.join(teamId, `${prefix}-${j}`);
       expect(res.status).toBe(201);
     }
     return teamId;
@@ -86,7 +86,7 @@ describe('leaving, removing and leader succession', () => {
     expect(await teamDoc(teamId)).toMatchObject({ memberCount: 2, openSeats: 2, leaderId: 'rm-leader' });
     expect((await members(teamId)).map((r) => r.userId)).toEqual(['rm-leader', 'rm-b']);
     const other = await makeTeam('rm-other');
-    expect((await env.call('POST', `/teams/${other}/join`, 'rm-a')).status).toBe(201);
+    expect((await env.join(other, 'rm-a')).status).toBe(201);
     expect(await checkInvariants(env.db)).toEqual([]);
   });
 
@@ -111,9 +111,10 @@ describe('leaving, removing and leader succession', () => {
     for (let i = 0; i < 20; i++) {
       const p = `t18-${i}`;
       const teamId = await makeTeam(p);
+      const code = await env.codeOf(teamId);
       const [left, joined] = await Promise.all([
         env.call('POST', `/teams/${teamId}/leave`, `${p}-leader`),
-        env.call('POST', `/teams/${teamId}/join`, `${p}-x`),
+        env.joinByCode(code, `${p}-x`),
       ]);
       expect(left.status).toBe(200);
       expect([201, 404]).toContain(joined.status);

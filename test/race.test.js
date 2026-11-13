@@ -25,14 +25,15 @@ describe('T1: 50 users race for the last seat (AC-1)', () => {
       const teamId = created.body._id;
 
       for (const m of ['m1', 'm2']) {
-        const joined = await env.call('POST', `/teams/${teamId}/join`, `${p}-${m}`);
+        const joined = await env.join(teamId, `${p}-${m}`);
         expect(joined.status).toBe(201);
       }
 
-      // 3 of 4 seats are taken, so exactly one seat is left.
+      // 3 of 4 seats are taken, so exactly one seat is left. Everyone holds the code.
+      const code = await env.codeOf(teamId);
       const results = await Promise.all(
         Array.from({ length: CONTENDERS }, (_, i) =>
-          env.call('POST', `/teams/${teamId}/join`, `${p}-c${i}`),
+          env.joinByCode(code, `${p}-c${i}`),
         ),
       );
       const wins = results.filter((r) => r.status === 201).length;

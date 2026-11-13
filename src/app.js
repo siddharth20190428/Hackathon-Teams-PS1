@@ -1,5 +1,14 @@
 import express from 'express';
-import { createTeam, joinTeam, leaveTeam, removeMember, getBoard, getTeam } from './teams.js';
+import {
+  createTeam,
+  joinByCode,
+  getInvite,
+  regenerateInvite,
+  leaveTeam,
+  removeMember,
+  getBoard,
+  getTeam,
+} from './teams.js';
 
 export function createApp(db, client) {
   const app = express();
@@ -33,9 +42,29 @@ export function createApp(db, client) {
   );
 
   app.post(
-    '/teams/:id/join',
+    '/hackathons/:hid/join-by-code',
     wrap(async (req, res) => {
-      res.status(201).json(await joinTeam(db, client, { teamId: req.params.id, userId: req.userId }));
+      res.status(201).json(
+        await joinByCode(db, client, {
+          hackathonId: req.params.hid,
+          code: req.body?.code,
+          userId: req.userId,
+        }),
+      );
+    }),
+  );
+
+  app.get(
+    '/teams/:id/invite',
+    wrap(async (req, res) => {
+      res.json(await getInvite(db, { teamId: req.params.id, actorId: req.userId }));
+    }),
+  );
+
+  app.post(
+    '/teams/:id/invite/regenerate',
+    wrap(async (req, res) => {
+      res.json(await regenerateInvite(db, { teamId: req.params.id, actorId: req.userId }));
     }),
   );
 
