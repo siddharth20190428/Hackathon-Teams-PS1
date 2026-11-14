@@ -133,6 +133,12 @@ export async function joinByCode(db, client, { hackathonId, code, userId }) {
           .collection('teams')
           .findOne({ hackathonId, inviteCode: normalized }, { session, projection: { inviteExpiresAt: 1, locked: 1 } });
         if (!found) throw httpError(404, 'INVALID_CODE');
+        // A retry of a join that already succeeded must not be told "full": the person's own
+        // seat is what filled the team. Found by the chaos test (kill, retry with a new key).
+        const mine = await db
+          .collection('memberships')
+          .findOne({ hackathonId, userId, teamId: found._id }, { session, projection: { _id: 1 } });
+        if (mine) throw httpError(409, 'ALREADY_IN_TEAM');
         if (found.inviteExpiresAt <= now) throw httpError(410, 'CODE_EXPIRED');
         if (found.locked) throw httpError(409, 'TEAM_LOCKED');
         throw httpError(409, 'TEAM_FULL');

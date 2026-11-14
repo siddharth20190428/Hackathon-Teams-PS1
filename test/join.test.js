@@ -61,4 +61,21 @@ describe('join and create rules under concurrency', () => {
     expect(team.body.openSeats).toBe(0);
     expect(await checkInvariants(env.db)).toEqual([]);
   });
+
+  it('a retry of a join that filled the team says ALREADY_IN_TEAM, not TEAM_FULL', async () => {
+    const created = await env.call('POST', '/hackathons/h1/teams', 'retry-leader', { name: 'retry-team' });
+    const teamId = created.body._id;
+    const code = await env.codeOf(teamId);
+    for (const m of ['a', 'b']) expect((await env.join(teamId, `retry-${m}`)).status).toBe(201);
+    // The last seat: this person's join fills the team.
+    expect((await env.joinByCode(code, 'retry-last')).status).toBe(201);
+    // The answer was lost, so the client asks again with a different key (the original key
+    // would just replay the stored 201). The team is now full, but the seat is theirs.
+    const again = await env.joinByCode(code, 'retry-last');
+    expect(again.status).toBe(409);
+    expect(again.body.error).toBe('ALREADY_IN_TEAM');
+    // Someone who really is late still hears TEAM_FULL.
+    const late = await env.joinByCode(code, 'retry-late');
+    expect(late.body.error).toBe('TEAM_FULL');
+  });
 });
