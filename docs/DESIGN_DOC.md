@@ -9,7 +9,7 @@ This is the short version. The long form is [DESIGN.md](../DESIGN.md); every dec
 Ten thousand people form teams of at most four, at the same moment. Three promises matter:
 
 1. When fifty people try to take the last seat, exactly one gets it and the other forty-nine get a clear `TEAM_FULL`.
-2. Nobody is ever in two teams, and no team is left broken (no leader, a wrong member count, orphaned memberships). Seven invariants (I-1 to I-7, DESIGN.md section 5) state this precisely, and a checker runs after every concurrency test.
+2. Nobody is ever in two teams, and no team is left broken (no leader, a wrong member count, orphaned memberships). Nine invariants (I-1 to I-9, DESIGN.md section 5) state this precisely, and a checker runs after every concurrency test.
 3. Retrying a request (double click, flaky network) never runs it twice.
 
 ## 2. The approach

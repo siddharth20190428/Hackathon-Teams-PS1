@@ -24,10 +24,24 @@ export async function checkInvariants(db) {
     audited.set(key, { ...(audited.get(key) ?? {}), [row._id.a]: row.n });
   }
 
+  const minOf = new Map();
+  for await (const h of db.collection('hackathons').find({}, { projection: { minTeamSize: 1 } })) {
+    minOf.set(h._id, h.minTeamSize ?? 1);
+  }
+  const lockedIds = new Set();
+
   const teamIds = new Set();
   for await (const t of db.collection('teams').find({})) {
     const key = String(t._id);
     teamIds.add(key);
+    // I-8: a locked team is at least the minimum size and hidden from the open board.
+    if (t.locked) {
+      lockedIds.add(key);
+      if (t.memberCount < (minOf.get(t.hackathonId) ?? 1)) {
+        problems.push(`I-8 team ${key}: locked with ${t.memberCount} members, minimum ${minOf.get(t.hackathonId) ?? 1}`);
+      }
+      if (t.lookingForTeammates !== false) problems.push(`I-8 team ${key}: locked but still listed as looking for teammates`);
+    }
     const log = audited.get(key);
     if (log?.TEAM_CREATED) {
       const expected =
@@ -60,6 +74,10 @@ export async function checkInvariants(db) {
   for await (const r of db.collection('joinRequests').find({ status: 'pending' }, { projection: { teamId: 1 } })) {
     if (!teamIds.has(String(r.teamId))) {
       problems.push(`I-6 pending join request ${r._id} for missing team ${r.teamId}`);
+    }
+    // I-9: a locked team has no pending join requests.
+    if (lockedIds.has(String(r.teamId))) {
+      problems.push(`I-9 pending join request ${r._id} for locked team ${r.teamId}`);
     }
   }
 

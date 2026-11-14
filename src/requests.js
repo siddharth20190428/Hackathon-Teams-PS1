@@ -16,25 +16,33 @@ async function leaderOrThrow(db, _id, actorId, options = {}) {
 
 export async function createJoinRequest(db, client, { teamId, userId }) {
   const _id = toId(teamId);
-  const team = await db.collection('teams').findOne({ _id }, { projection: { hackathonId: 1, openSeats: 1 } });
-  if (!team) throw httpError(404, 'NOT_FOUND');
+  const first = await db.collection('teams').findOne({ _id }, { projection: { hackathonId: 1 } });
+  if (!first) throw httpError(404, 'NOT_FOUND');
   const member = await db
     .collection('memberships')
-    .findOne({ hackathonId: team.hackathonId, userId }, { projection: { _id: 1 } });
+    .findOne({ hackathonId: first.hackathonId, userId }, { projection: { _id: 1 } });
   if (member) throw httpError(409, 'ALREADY_IN_TEAM');
-  if (team.openSeats <= 0) throw httpError(409, 'TEAM_FULL');
 
   const request = {
     _id: new ObjectId(),
-    hackathonId: team.hackathonId,
+    hackathonId: first.hackathonId,
     teamId: _id,
     userId,
     status: 'pending',
     createdAt: new Date(),
   };
+  const team = first;
   try {
     // The partial unique index on (teamId, userId) where status is pending rejects a duplicate.
     await runTransaction(client, async (session) => {
+      // Touching the team document in this transaction is what makes "locked" safe: a lock that
+      // commits meanwhile conflicts with this write, and the retry sees the team locked. Without
+      // it, a request could slip in just after the lock cancelled the pending ones.
+      const live = await db
+        .collection('teams')
+        .findOneAndUpdate({ _id, locked: { $ne: true } }, { $inc: { version: 1 } }, { returnDocument: 'after', session, projection: { openSeats: 1 } });
+      if (!live) throw httpError(409, 'TEAM_LOCKED');
+      if (live.openSeats <= 0) throw httpError(409, 'TEAM_FULL');
       await db.collection('joinRequests').insertOne(request, { session });
       await audit(db, session, {
         action: 'JOIN_REQUESTED',
@@ -72,14 +80,15 @@ export async function acceptJoinRequest(db, client, { teamId, requestId, actorId
       //    change that lands mid-flight cannot be bypassed, and non-leaders learn nothing
       //    about the request.
       const team = await db.collection('teams').findOneAndUpdate(
-        { _id, leaderId: actorId, openSeats: { $gt: 0 } },
+        { _id, leaderId: actorId, openSeats: { $gt: 0 }, locked: { $ne: true } },
         { $inc: { memberCount: 1, openSeats: -1, version: 1 } },
         { returnDocument: 'after', session },
       );
       if (!team) {
-        const t = await db.collection('teams').findOne({ _id }, { session, projection: { leaderId: 1 } });
+        const t = await db.collection('teams').findOne({ _id }, { session, projection: { leaderId: 1, locked: 1 } });
         if (!t) throw httpError(404, 'NOT_FOUND');
         if (t.leaderId !== actorId) throw httpError(403, 'NOT_LEADER');
+        if (t.locked) throw httpError(409, 'TEAM_LOCKED');
         throw httpError(409, 'TEAM_FULL');
       }
 

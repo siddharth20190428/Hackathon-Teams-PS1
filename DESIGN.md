@@ -89,6 +89,8 @@ A checker (`src/invariants.js`) runs after every concurrency test and at the end
 - I-4: every team has at least one member and exactly one leader membership, matching `leaderId`.
 - I-5: no membership rows exist for a team that does not exist.
 - I-6: no pending join request exists for a team that does not exist.
+- I-8: a locked team has at least the hackathon's minimum members and is not listed as looking for teammates.
+- I-9: no pending join request exists for a locked team.
 - I-7: for a team created through the API, creations plus joins minus leaves and removals in the audit log equal `memberCount`. Seeded teams have no log entries and are skipped.
 
 ## 6. Read path

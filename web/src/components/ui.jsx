@@ -57,6 +57,17 @@ export function Seats({ taken, max }) {
   );
 }
 
+// Where a team stands against the hackathon's minimum size.
+export function StatusBadge({ status, count, minSize }) {
+  if (status === 'forming') {
+    const need = Math.max(0, (minSize ?? 0) - count);
+    return <span className="badge badge--warn">Forming · needs {need} more</span>;
+  }
+  if (status === 'locked') return <span className="badge">Locked</span>;
+  if (status === 'ready') return <span className="badge badge--good">Ready</span>;
+  return null;
+}
+
 export function Empty({ icon = 'users', title, children }) {
   return (
     <div className="empty">

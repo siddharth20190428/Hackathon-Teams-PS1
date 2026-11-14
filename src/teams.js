@@ -23,6 +23,13 @@ async function displayNameOf(db, userId, session) {
   return user?.displayName ?? userId;
 }
 
+// "forming" below the hackathon's minimum, "ready" at or above it, "locked" once the leader
+// has closed the team. Computed on read from the member count, so it can never be stale.
+export const teamStatus = (team, minSize) =>
+  team.locked ? 'locked' : team.memberCount >= minSize ? 'ready' : 'forming';
+const minSizeOf = (hack) => hack?.minTeamSize ?? 1;
+const withStatus = (team, minSize) => ({ ...team, minSize, status: teamStatus(team, minSize) });
+
 const inviteExpiry = (hack) => new Date(Date.now() + (hack?.inviteTtlHours ?? 48) * 3600 * 1000);
 
 export async function createTeam(db, client, { hackathonId, userId, name }) {
@@ -43,6 +50,7 @@ export async function createTeam(db, client, { hackathonId, userId, name }) {
       inviteCode: newInviteCode(),
       inviteExpiresAt: inviteExpiry(hack),
       lookingForTeammates: true,
+      locked: false,
       version: 1,
       createdAt: new Date(),
     };
@@ -109,15 +117,22 @@ export async function joinByCode(db, client, { hackathonId, code, userId }) {
   try {
     return await runTransaction(client, async (session) => {
       const team = await addMember(db, session, {
-        filter: { hackathonId, inviteCode: normalized, inviteExpiresAt: { $gt: now }, openSeats: { $gt: 0 } },
+        filter: {
+          hackathonId,
+          inviteCode: normalized,
+          inviteExpiresAt: { $gt: now },
+          openSeats: { $gt: 0 },
+          locked: { $ne: true }, // a locked team takes nobody, even with a valid code
+        },
         userId,
       });
       if (!team) {
         const found = await db
           .collection('teams')
-          .findOne({ hackathonId, inviteCode: normalized }, { session, projection: { inviteExpiresAt: 1 } });
+          .findOne({ hackathonId, inviteCode: normalized }, { session, projection: { inviteExpiresAt: 1, locked: 1 } });
         if (!found) throw httpError(404, 'INVALID_CODE');
         if (found.inviteExpiresAt <= now) throw httpError(410, 'CODE_EXPIRED');
+        if (found.locked) throw httpError(409, 'TEAM_LOCKED');
         throw httpError(409, 'TEAM_FULL');
       }
       return { teamId: String(team._id), userId };
@@ -175,19 +190,91 @@ export async function regenerateInvite(db, client, { teamId, actorId }) {
 }
 
 export async function getBoard(db, { hackathonId, limit = 20 }) {
-  const teams = await db
+  const minSize = minSizeOf(await db.collection('hackathons').findOne({ _id: hackathonId }, { projection: { minTeamSize: 1 } }));
+  const found = await db
     .collection('teams')
     .find({ hackathonId, lookingForTeammates: true, openSeats: { $gt: 0 } }, { projection: PUBLIC_TEAM })
     .sort({ createdAt: -1, _id: -1 })
     .limit(limit)
     .toArray();
-  return { teams };
+  return { teams: found.map((t) => withStatus(t, minSize)) };
 }
 
 export async function getTeam(db, { teamId }) {
   const team = await db.collection('teams').findOne({ _id: toId(teamId) }, { projection: PUBLIC_TEAM });
   if (!team) throw httpError(404, 'NOT_FOUND');
-  return team;
+  const hack = await db.collection('hackathons').findOne({ _id: team.hackathonId }, { projection: { minTeamSize: 1 } });
+  return withStatus(team, minSizeOf(hack));
+}
+
+// After a member is gone: a locked team that fell below the minimum opens again (so a locked
+// team can never be smaller than the minimum), and a team with a free seat is never left hidden
+// from the board by a stale flag. Runs inside the caller's transaction, on the document the
+// seat release just returned.
+async function reopenAfterLoss(db, session, team) {
+  if (team.memberCount < 1) return;
+  if (team.locked) {
+    const hack = await db.collection('hackathons').findOne({ _id: team.hackathonId }, { session, projection: { minTeamSize: 1 } });
+    if (team.memberCount >= minSizeOf(hack)) return;
+    await db.collection('teams').updateOne({ _id: team._id }, { $set: { locked: false, lookingForTeammates: true } }, { session });
+    await audit(db, session, {
+      action: 'TEAM_UNLOCKED',
+      hackathonId: team.hackathonId,
+      teamId: team._id,
+      summary: { reason: 'below_minimum' },
+    });
+  } else if (!team.lookingForTeammates) {
+    await db.collection('teams').updateOne({ _id: team._id }, { $set: { lookingForTeammates: true } }, { session });
+  }
+}
+
+// The leader closes a team that has reached the minimum. The filter is one atomic operation:
+// a join that lands first raises the count (fine), a leave that lands first lowers it (the lock
+// is refused), and once the lock lands no join can match, because joins filter on locked.
+export async function lockTeam(db, client, { teamId, actorId }) {
+  const _id = toId(teamId);
+  return runTransaction(client, async (session) => {
+    const current = await db.collection('teams').findOne({ _id }, { session, projection: { hackathonId: 1 } });
+    if (!current) throw httpError(404, 'NOT_FOUND');
+    const hack = await db.collection('hackathons').findOne({ _id: current.hackathonId }, { session });
+    const min = minSizeOf(hack);
+    const team = await db.collection('teams').findOneAndUpdate(
+      { _id, leaderId: actorId, locked: { $ne: true }, memberCount: { $gte: min } },
+      { $set: { locked: true, lookingForTeammates: false }, $inc: { version: 1 } },
+      { returnDocument: 'after', session },
+    );
+    if (!team) {
+      const t = await db.collection('teams').findOne({ _id }, { session });
+      if (!t) throw httpError(404, 'NOT_FOUND');
+      if (t.leaderId !== actorId) throw httpError(403, 'NOT_LEADER');
+      if (t.locked) throw httpError(409, 'ALREADY_LOCKED');
+      throw httpError(409, 'TEAM_TOO_SMALL');
+    }
+    // Nobody can accept requests to a locked team, so they are void.
+    await cancelTeamRequests(db, session, _id);
+    await audit(db, session, { action: 'TEAM_LOCKED', hackathonId: team.hackathonId, teamId: _id });
+    return withStatus(team, min);
+  });
+}
+
+export async function unlockTeam(db, client, { teamId, actorId }) {
+  const _id = toId(teamId);
+  return runTransaction(client, async (session) => {
+    const team = await db.collection('teams').findOneAndUpdate(
+      { _id, leaderId: actorId, locked: true },
+      { $set: { locked: false, lookingForTeammates: true }, $inc: { version: 1 } },
+      { returnDocument: 'after', session },
+    );
+    if (!team) {
+      const t = await db.collection('teams').findOne({ _id }, { session });
+      if (!t) throw httpError(404, 'NOT_FOUND');
+      if (t.leaderId !== actorId) throw httpError(403, 'NOT_LEADER');
+      throw httpError(409, 'NOT_LOCKED');
+    }
+    await audit(db, session, { action: 'TEAM_UNLOCKED', hackathonId: team.hackathonId, teamId: _id, summary: { reason: 'leader' } });
+    const hack = await db.collection('hackathons').findOne({ _id: team.hackathonId }, { session, projection: { minTeamSize: 1 } });
+    return withStatus(team, minSizeOf(hack));
+  });
 }
 
 export async function leaveTeam(db, client, { teamId, userId }) {
@@ -213,6 +300,8 @@ export async function leaveTeam(db, client, { teamId, userId }) {
       teamId: _id,
       targetUserId: userId,
     });
+
+    await reopenAfterLoss(db, session, team);
 
     if (team.memberCount === 0) {
       await db.collection('teams').deleteOne({ _id }, { session });
@@ -268,6 +357,7 @@ export async function removeMember(db, client, { teamId, actorId, targetUserId }
       .findOneAndDelete({ teamId: _id, userId: targetUserId }, { session });
     // Not a member: abort, which rolls back the decrement above.
     if (!removed) throw httpError(404, 'NOT_MEMBER');
+    await reopenAfterLoss(db, session, team);
     await audit(db, session, {
       action: 'MEMBER_REMOVED',
       hackathonId: team.hackathonId,
@@ -314,8 +404,9 @@ export async function getMyTeam(db, { hackathonId, userId }) {
   const nameOf = new Map(users.map((u) => [u._id, u.displayName]));
   const name = (id) => nameOf.get(id) ?? id;
 
+  const hack = await db.collection('hackathons').findOne({ _id: hackathonId }, { projection: { minTeamSize: 1 } });
   return {
-    team,
+    team: withStatus(team, minSizeOf(hack)),
     role: membership.role,
     members: rows.map((r) => ({ userId: r.userId, displayName: name(r.userId), role: r.role, joinedAt: r.joinedAt })),
     requests: requests.map((r) => ({ _id: r._id, userId: r.userId, displayName: name(r.userId), createdAt: r.createdAt })),

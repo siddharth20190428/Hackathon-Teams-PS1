@@ -6,3 +6,6 @@
 .dialog__panel.form { max-height: calc(100vh - 32px); overflow: auto; }
 .dialog form.dialog__panel { width: min(480px, calc(100vw - 32px)); }
 .tz-detected { margin-top: 2px; }
+
+.badge--good { background: var(--good-soft); color: var(--good); }
+.badge--warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }

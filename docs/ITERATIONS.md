@@ -111,6 +111,11 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** an event now says what changed: `board` (false for a request or decline, so pages skip the board read), `teams` (ids; they are already public on the board) and `me` (true when the person on that stream is involved, decided per stream so no event contains another user's id). Bursts merge: flags are OR-ed and ids unioned, and more than 100 ids collapse to "any". The page re-reads "your team" only when an event names its team or it is involved; the poll is now a 60 s safety net. A profile edit says "any team", since a name can appear anywhere.
 **Checked:** the merge logic in isolation (6 assertions, run in a scratch script) and in a browser against a stub (the request appears in under 3 s with no polling). The 3 new HTTP tests (join request wakes the leader with `board:false`; accepting tells the requester `me:true` and a bystander `me:false`) have not been run against a database.
 
+### v19: minimum team size, locking
+**Why:** the brief gives a minimum and a maximum; only the maximum was enforced.
+**What:** teams are forming, ready or locked (D28). `POST /teams/:id/lock` and `/unlock` (leader only; lock needs the minimum). Locked teams refuse the invite code, new requests and acceptances with `TEAM_LOCKED`, leave the open board and have pending requests cancelled. A locked team that drops below the minimum unlocks in the same transaction. Two new invariants (I-8, I-9). Also fixed on the way: a team hidden from the board by the seed's `lookingForTeammates: false` flag stayed hidden after a member left; leaving or removal now relists it. The app shows status badges, a lock/unlock control with a confirm dialog, and hides suggestions and explains the invite code for a locked team.
+**Checked:** the screens in a browser against a stub. The 10 new tests (`test/minsize.test.js`, including three races) are written but not yet run against a database.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.
@@ -118,4 +123,4 @@ The project was built in small patches. Each one was run against the tests, and 
 
 ## Next
 
-Team-scoped live events, minimum team size, the chaos test, validation of the remaining inputs.
+The chaos test, validation of the remaining inputs, the one-page design doc, the video.

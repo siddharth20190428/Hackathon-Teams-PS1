@@ -21,12 +21,14 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-122 tests in 15 files.
+143 tests in 17 files.
 
 | File | Tests |
 |---|---|
 | `test/race.test.js` | T1: 50 users race for the last seat; repeated 5 rounds by default, 20 with `RACE_ROUNDS=20` |
 | `test/join.test.js` | T2: one user joins 20 teams at once and ends up in exactly one. T4 (partly): parallel create-team by one user makes one team and no orphan. T7: a full team returns `TEAM_FULL` and changes nothing |
+| `test/profile.test.js` | Profile edit: field rules, protected fields, idempotent replay, rename reaches the board, skills reach suggestions. |
+| `test/minsize.test.js` | forming, ready and locked; lock refused below the minimum; locked teams refuse code, request and accept; auto-unlock below the minimum; lock racing 10 joins, the second member leaving and 6 join requests; the checker catches I-8 and I-9. |
 | `test/leave.test.js` | T16 leader succession. T17 last member deletes the team and frees the person. Non-member leave. T12 non-leader cannot remove. Leader removes a member, who can then join elsewhere. Leader cannot remove self. Removing a non-member rolls the count back. T18 last member leaves while someone joins (20 rounds). Two members leave at once (10 rounds). Removing a member while they leave (10 rounds) |
 | `test/invite.test.js` | Code format and uniqueness (2,000 codes). Normalization. Default 48 h expiry. Correct code in any case. T9 wrong and malformed codes, including operator-injection payloads. T8 expired code. Full team. Already in a team. Direct join by id is gone. Codes never appear on the board or team view. Only the leader can read or regenerate the code. Regeneration invalidates the old code |
 | `test/boardCache.test.js` | Unit tests, no database: concurrent misses share one load; TTL expiry with a fake clock; invalidation drops values; a load running during an invalidation is not stored; errors are not cached; TTL 0 disables the cache; the entry cap evicts |
@@ -51,7 +53,7 @@ The page itself has no automated test in the repository. It was checked by hand 
 
 ## Load-time correctness check
 
-`scripts/verify-load.js` runs after `load/mixed.js`: it runs the invariant checker (I-1 to I-7) over the whole database, and checks for each hot team that member count equals membership rows, open seats are not negative, and joiners did not exceed the seats it had. This is the check that speed did not cost correctness.
+`scripts/verify-load.js` runs after `load/mixed.js`: it runs the invariant checker (I-1 to I-9) over the whole database, and checks for each hot team that member count equals membership rows, open seats are not negative, and joiners did not exceed the seats it had. This is the check that speed did not cost correctness.
 
 ## Not covered yet
 

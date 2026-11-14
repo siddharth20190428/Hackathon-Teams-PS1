@@ -5,7 +5,7 @@ import { useToast } from '../toasts.jsx';
 import { useConfirm } from '../confirm.jsx';
 import { useAuth } from '../auth.jsx';
 import { formatDateTime } from '../format.js';
-import { Avatar, Button, Field, Seats, SkeletonList } from './ui.jsx';
+import { Avatar, Button, Field, Seats, SkeletonList, StatusBadge } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 import { Suggestions } from './Suggestions.jsx';
 
@@ -61,6 +61,7 @@ function NoTeam({ refresh }) {
 }
 
 function Invite({ team, refresh }) {
+  const locked = team.locked === true;
   const toast = useToast();
   const confirm = useConfirm();
   const [regen, regenerating] = useAction();
@@ -96,7 +97,11 @@ function Invite({ team, refresh }) {
         <Button variant="secondary" size="sm" icon="copy" onClick={copy}>Copy</Button>
       </div>
       <p className="muted small">
-        {team.inviteExpiresAt ? `Expires ${formatDateTime(team.inviteExpiresAt)}.` : 'Share it with the people you want.'}
+        {locked
+          ? 'The team is locked, so this code does not work until you unlock it.'
+          : team.inviteExpiresAt
+            ? `Expires ${formatDateTime(team.inviteExpiresAt)}.`
+            : 'Share it with the people you want.'}
       </p>
       <Button variant="ghost" size="sm" icon="refresh" loading={regenerating} onClick={regenerate}>New code</Button>
     </section>
@@ -117,6 +122,30 @@ export function MyTeam({ mine, meId, refresh, onDeclined }) {
   const leader = role === 'leader';
   const visibleRequests = requests.filter((r) => !hidden.has(r._id));
   const full = team.openSeats <= 0;
+  const locked = team.status === 'locked';
+  const ready = team.status === 'ready';
+  const missing = Math.max(0, team.minSize - team.memberCount);
+
+  const lock = async () => {
+    const ok = await confirm({
+      title: 'Lock this team?',
+      body: 'Nobody can join, with or without a code, and pending requests are cancelled. You can unlock it any time.',
+      confirmLabel: 'Lock team',
+      danger: false,
+    });
+    if (!ok) return;
+    act(async () => {
+      await api('POST', `/teams/${team._id}/lock`, {});
+      toast.success('Team locked.');
+      await refresh();
+    });
+  };
+  const unlock = () =>
+    act(async () => {
+      await api('POST', `/teams/${team._id}/unlock`, {});
+      toast.success('Team unlocked. People can join again.');
+      await refresh();
+    });
 
   const leave = async () => {
     const ok = await confirm({
@@ -186,7 +215,22 @@ export function MyTeam({ mine, meId, refresh, onDeclined }) {
         <div className="hero__seats">
           <Seats taken={team.memberCount} max={team.maxSize} />
           <span className="small muted">{full ? 'Team is full' : `${team.openSeats} open seat${team.openSeats === 1 ? '' : 's'}`}</span>
+          <StatusBadge status={team.status} count={team.memberCount} minSize={team.minSize} />
         </div>
+        <p className="small muted">
+          {locked
+            ? 'Locked: nobody can join until the leader unlocks the team.'
+            : ready
+              ? leader
+                ? 'You meet the minimum size. Lock the team when you are done recruiting.'
+                : 'The team meets the minimum size.'
+              : `Needs ${missing} more member${missing === 1 ? '' : 's'} to reach the minimum of ${team.minSize}.`}
+        </p>
+        {leader && (locked || ready) && (
+          <Button variant="secondary" size="sm" icon={locked ? 'refresh' : 'key'} loading={pending} onClick={locked ? unlock : lock}>
+            {locked ? 'Unlock team' : 'Lock team'}
+          </Button>
+        )}
       </section>
 
       <section className="panel" aria-labelledby="members-title">
@@ -237,7 +281,7 @@ export function MyTeam({ mine, meId, refresh, onDeclined }) {
         </section>
       )}
 
-      {!full && <Suggestions teamId={team._id} memberCount={team.memberCount} profileKey={`${user.skills.join()}|${user.utcOffsetMinutes}`} />}
+      {!full && !locked && <Suggestions teamId={team._id} memberCount={team.memberCount} profileKey={`${user.skills.join()}|${user.utcOffsetMinutes}`} />}
 
       <Button variant="danger-ghost" icon="door" onClick={leave} loading={pending}>Leave team</Button>
     </div>

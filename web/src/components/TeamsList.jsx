@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Avatar, Button, Empty, Seats, SkeletonList } from './ui.jsx';
+import { Avatar, Button, Empty, Seats, SkeletonList, StatusBadge } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 
 const PAGE = 40;
@@ -77,6 +77,7 @@ export function TeamsList({ teams, myTeamId, requested, onAsk }) {
                   <span className="small muted">
                     {full ? 'Full' : `${t.openSeats} open`}
                   </span>
+                  <StatusBadge status={t.status} count={t.memberCount} minSize={t.minSize} />
                 </div>
                 <div className="team-card__action">{action}</div>
               </li>

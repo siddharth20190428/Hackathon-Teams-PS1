@@ -104,6 +104,8 @@ Every `POST` and `DELETE` also needs an `Idempotency-Key` header (8 to 128 chara
 | `POST /hackathons/:hid/join-by-code` with `{ code }` | any user not in a team | 201 `{ teamId, userId }` |
 | `GET /teams/:id/invite` | leader | `{ inviteCode, inviteExpiresAt }` |
 | `POST /teams/:id/invite/regenerate` | leader | a new code; the old one stops working |
+| `POST /teams/:id/lock` | leader | the team with `status: "locked"`. Refused with `TEAM_TOO_SMALL` below the minimum size |
+| `POST /teams/:id/unlock` | leader | the team, reopened |
 | `POST /teams/:id/leave` | member | `{ teamId, userId, teamDeleted, newLeaderId? }` |
 | `DELETE /teams/:id/members/:uid` | leader | `{ teamId, removed }` |
 | `POST /teams/:id/join-requests` | any user not in a team | 201 `{ requestId, teamId, userId, status }` |

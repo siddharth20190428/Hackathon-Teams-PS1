@@ -11,6 +11,8 @@ import {
   getBoard,
   getTeam,
   getMyTeam,
+  lockTeam,
+  unlockTeam,
 } from './teams.js';
 import { createBoardCache } from './boardCache.js';
 import { createBoardEvents } from './boardEvents.js';
@@ -246,6 +248,20 @@ export function createApp(db, client, options = {}) {
     '/teams/:id/invite/regenerate',
     wrap(async (req, res) => {
       res.json(await regenerateInvite(db, client, { teamId: req.params.id, actorId: req.userId }));
+    }),
+  );
+
+  app.post(
+    '/teams/:id/lock',
+    wrap(async (req, res) => {
+      res.json(await lockTeam(db, client, { teamId: req.params.id, actorId: req.userId }));
+    }),
+  );
+
+  app.post(
+    '/teams/:id/unlock',
+    wrap(async (req, res) => {
+      res.json(await unlockTeam(db, client, { teamId: req.params.id, actorId: req.userId }));
     }),
   );
 
