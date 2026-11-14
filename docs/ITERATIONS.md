@@ -116,6 +116,11 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** teams are forming, ready or locked (D28). `POST /teams/:id/lock` and `/unlock` (leader only; lock needs the minimum). Locked teams refuse the invite code, new requests and acceptances with `TEAM_LOCKED`, leave the open board and have pending requests cancelled. A locked team that drops below the minimum unlocks in the same transaction. Two new invariants (I-8, I-9). Also fixed on the way: a team hidden from the board by the seed's `lookingForTeammates: false` flag stayed hidden after a member left; leaving or removal now relists it. The app shows status badges, a lock/unlock control with a confirm dialog, and hides suggestions and explains the invite code for a locked team.
 **Checked:** the screens in a browser against a stub. The 10 new tests (`test/minsize.test.js`, including three races) are written but not yet run against a database.
 
+### v20: input validation
+**Why:** the brief says every input is validated. An audit of each place input enters the API found four gaps: the join code, `?limit` on two lists, ids in paths, and the hackathon id.
+**What:** see D29. Also fixed: the final error handler turned any error raised outside a route into a 500; it now keeps the status and code of errors we raise on purpose.
+**Checked:** 12 new tests in `test/validation.test.js`, written but not yet run against a database. Two existing tests changed to match the stricter behaviour (`invite`: non-string codes; `suggestions`: `?limit=nonsense`).
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.
@@ -123,4 +128,4 @@ The project was built in small patches. Each one was run against the tests, and 
 
 ## Next
 
-The chaos test, validation of the remaining inputs, the one-page design doc, the video.
+The chaos test, the one-page design doc, the video.

@@ -21,12 +21,13 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-143 tests in 17 files.
+155 tests in 18 files.
 
 | File | Tests |
 |---|---|
 | `test/race.test.js` | T1: 50 users race for the last seat; repeated 5 rounds by default, 20 with `RACE_ROUNDS=20` |
 | `test/join.test.js` | T2: one user joins 20 teams at once and ends up in exactly one. T4 (partly): parallel create-team by one user makes one team and no orphan. T7: a full team returns `TEAM_FULL` and changes nothing |
+| `test/validation.test.js` | Join code (every non-string, wrong shape, extra fields, length); `?limit` (nonsense, repeated, out of range, bounds); malformed team, request, user and hackathon ids on every route that takes them; unknown hackathon; wrong-typed and unknown body fields on register, login and create team; malformed and non-object JSON; 413. |
 | `test/profile.test.js` | Profile edit: field rules, protected fields, idempotent replay, rename reaches the board, skills reach suggestions. |
 | `test/minsize.test.js` | forming, ready and locked; lock refused below the minimum; locked teams refuse code, request and accept; auto-unlock below the minimum; lock racing 10 joins, the second member leaving and 6 join requests; the checker catches I-8 and I-9. |
 | `test/leave.test.js` | T16 leader succession. T17 last member deletes the team and frees the person. Non-member leave. T12 non-leader cannot remove. Leader removes a member, who can then join elsewhere. Leader cannot remove self. Removing a non-member rolls the count back. T18 last member leaves while someone joins (20 rounds). Two members leave at once (10 rounds). Removing a member while they leave (10 rounds) |

@@ -43,8 +43,8 @@ export async function getPeople(db, { hackathonId, limit = 20 }) {
 // scored: those who bring at least one skill the team lacks, topped up with anyone else free
 // when there are too few. A bounded pool keeps the request cheap; the cost is that the best
 // possible match could sit outside it (DECISIONS D27).
-export async function getSuggestions(db, { teamId, actorId, limit }) {
-  const n = Math.min(Math.max(Number.parseInt(limit, 10) || 10, 1), 20);
+export async function getSuggestions(db, { teamId, actorId, limit = 10 }) {
+  const n = limit; // already checked: a whole number from 1 to 20
   const _id = toId(teamId);
   const team = await db.collection('teams').findOne({ _id }, { projection: { hackathonId: 1, name: 1 } });
   if (!team) throw httpError(404, 'NOT_FOUND');

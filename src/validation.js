@@ -34,6 +34,24 @@ export const updateProfileSchema = z
   .strict()
   .refine((v) => Object.keys(v).length > 0, { message: 'Send at least one field to change' });
 
+// The invite code is typed by hand, so any string up to a sane length is accepted here and the
+// format check (and the look-alike mapping) happens in joinByCode. Anything that is not a
+// string, such as { "$ne": null }, an array or a number, stops here.
+export const joinByCodeSchema = z.object({ code: z.string().max(64) }).strict();
+
+// ?limit=N on lists: digits only, 1..max. "abc", "-1", "1e2", "0x10", "2.5" and repeated
+// parameters (which Express turns into an array) are all rejected rather than guessed at.
+export const limitQuery = (max, fallback) =>
+  z.object({
+    limit: z
+      .string()
+      .regex(/^\d{1,3}$/, 'must be a whole number')
+      .transform(Number)
+      .pipe(z.number().int().min(1).max(max))
+      .optional()
+      .transform((n) => n ?? fallback),
+  });
+
 export const loginSchema = z.object({ email, password: z.string().min(1).max(128) }).strict();
 
 export const createTeamSchema = z.object({ name: z.string().trim().min(1).max(60) }).strict();

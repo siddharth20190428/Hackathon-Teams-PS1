@@ -5,8 +5,10 @@ import { newInviteCode, normalizeCode, isValidCode } from './inviteCodes.js';
 import { cancelUserRequests, cancelTeamRequests } from './requestCleanup.js';
 import { audit } from './audit.js';
 
+// ObjectId.isValid also accepts any 12-character string; ids here are always 24 hex digits.
+const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 export const toId = (s) => {
-  if (!ObjectId.isValid(s)) throw httpError(404, 'NOT_FOUND');
+  if (typeof s !== 'string' || !OBJECT_ID.test(s)) throw httpError(404, 'NOT_FOUND');
   return new ObjectId(s);
 };
 

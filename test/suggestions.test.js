@@ -166,7 +166,7 @@ describe('suggestions and the people list over HTTP', () => {
 
   it('limits the number of suggestions', async () => {
     expect(ids(await suggestions(env.aliceTeam._id, 'alice', '?limit=2'))).toEqual(['bea', 'eli']);
-    expect(ids(await suggestions(env.aliceTeam._id, 'alice', '?limit=nonsense')).length).toBe(4);
+    expect(ids(await suggestions(env.aliceTeam._id, 'alice', '')).length).toBe(4); // default
   });
 
   it('the people list shows free people only, newest first, without private fields', async () => {

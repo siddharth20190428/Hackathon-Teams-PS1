@@ -31,7 +31,8 @@ import {
 } from './auth.js';
 import { createRateLimiter } from './rateLimit.js';
 import { getPeople, getSuggestions } from './people.js';
-import { parse, registerSchema, loginSchema, createTeamSchema, updateProfileSchema } from './validation.js';
+import { parse, registerSchema, loginSchema, createTeamSchema, updateProfileSchema, joinByCodeSchema, limitQuery } from './validation.js';
+import { httpError } from './errors.js';
 import {
   createJoinRequest,
   listJoinRequests,
@@ -209,6 +210,26 @@ export function createApp(db, client, options = {}) {
     }),
   );
 
+  // Path parameters are checked once, before any route runs. A malformed id gets the same 404
+  // as a missing one, so nothing can be learned from the difference.
+  const knownHackathons = new Map(); // id -> time until which we trust that it exists
+  app.param('hid', (req, res, next, hid) => {
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(hid)) return next(httpError(404, 'NOT_FOUND'));
+    if ((knownHackathons.get(hid) ?? 0) > Date.now()) return next();
+    db.collection('hackathons')
+      .findOne({ _id: hid }, { projection: { _id: 1 } })
+      .then((found) => {
+        if (!found) throw httpError(404, 'HACKATHON_NOT_FOUND');
+        if (knownHackathons.size >= 100) knownHackathons.clear();
+        knownHackathons.set(hid, Date.now() + 60_000);
+        next();
+      })
+      .catch(next);
+  });
+  app.param('uid', (req, res, next, uid) =>
+    /^[\w.:@-]{1,128}$/.test(uid) ? next() : next(httpError(404, 'NOT_FOUND')),
+  );
+
   app.post(
     '/hackathons/:hid/teams',
     wrap(async (req, res) => {
@@ -230,7 +251,7 @@ export function createApp(db, client, options = {}) {
       res.status(201).json(
         await joinByCode(db, client, {
           hackathonId: req.params.hid,
-          code: req.body?.code,
+          code: parse(joinByCodeSchema, req.body).code,
           userId: req.userId,
         }),
       );
@@ -345,7 +366,7 @@ export function createApp(db, client, options = {}) {
     '/teams/:id/audit',
     wrap(async (req, res) => {
       res.json(
-        await listAudit(db, { teamId: req.params.id, actorId: req.userId, limit: req.query.limit }),
+        await listAudit(db, { teamId: req.params.id, actorId: req.userId, limit: parse(limitQuery(200, 50), req.query).limit }),
       );
     }),
   );
@@ -373,7 +394,7 @@ export function createApp(db, client, options = {}) {
     '/teams/:id/suggestions',
     limitBy('suggestionsPerUser', (req) => `user:${req.userId}`),
     wrap(async (req, res) => {
-      res.json(await getSuggestions(db, { teamId: req.params.id, actorId: req.userId, limit: req.query.limit }));
+      res.json(await getSuggestions(db, { teamId: req.params.id, actorId: req.userId, limit: parse(limitQuery(20, 10), req.query).limit }));
     }),
   );
 
@@ -408,6 +429,8 @@ export function createApp(db, client, options = {}) {
     if (res.headersSent) return next(err);
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'INVALID_JSON' });
     if (err.type === 'entity.too.large') return res.status(413).json({ error: 'PAYLOAD_TOO_LARGE' });
+    // Errors we raised on purpose (for example a bad path parameter) keep their status and code.
+    if (err.status && err.code) return res.status(err.status).json({ error: err.code });
     console.error(err);
     res.status(500).json({ error: 'INTERNAL' });
   });

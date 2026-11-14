@@ -66,10 +66,14 @@ describe('joining by invite code', () => {
     const wrong = await env.joinByCode('ZZZZZZZZZZ', 't9-user');
     expect(wrong.status).toBe(404);
     expect(wrong.body.error).toBe('INVALID_CODE');
-    for (const bad of ['', 'short', 'UUUUUUUUUU', { $ne: null }, null]) {
+    // Strings of the wrong shape are INVALID_CODE; anything that is not a string never gets that far.
+    for (const bad of ['', 'short', 'UUUUUUUUUU']) {
       const res = await env.joinByCode(bad, 't9-user');
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe('INVALID_CODE');
+      expect([res.status, res.body.error]).toEqual([400, 'INVALID_CODE']);
+    }
+    for (const bad of [{ $ne: null }, null, 12, ['ZZZZZZZZZZ']]) {
+      const res = await env.joinByCode(bad, 't9-user');
+      expect([res.status, res.body.error]).toEqual([400, 'VALIDATION_ERROR']);
     }
   });
 
