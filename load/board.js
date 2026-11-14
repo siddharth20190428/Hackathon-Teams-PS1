@@ -1,9 +1,13 @@
 import http from 'k6/http';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 
 const BASE = __ENV.BASE_URL || 'http://localhost:3000';
 const HACKATHON = __ENV.HACKATHON_ID || 'h1';
 const TOKEN = __ENV.TOKEN;
+// Mean pause between one user's reads. 0 (default) is a stress test: every user fires again at
+// once. With THINK_MS=1000, 100 users make about 100 requests a second, like 100 people with
+// the board open and refreshing about once a second.
+const THINK_MS = Number(__ENV.THINK_MS || 0);
 if (!TOKEN) throw new Error('set TOKEN, e.g. TOKEN=$(npm run -s token -- u1) npm run load');
 
 export const options = {
@@ -26,6 +30,7 @@ export default function () {
     headers: { authorization: `Bearer ${TOKEN}` },
   });
   check(res, { 'status is 200': (r) => r.status === 200 });
+  if (THINK_MS > 0) sleep((THINK_MS * (0.5 + Math.random())) / 1000);
 }
 
 const fmt = (n) => (typeof n === 'number' ? n.toFixed(1) : String(n));

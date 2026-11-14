@@ -9,7 +9,7 @@ Goal: p95 under 200 ms with 100 concurrent users, on 10,000 users and 2,000 team
 | Is the board read under 200 ms p95 at 100 users? | Yes: 44 to 47 ms with the cache and authentication (39 to 42 ms before authentication). Without the cache it is 145 to 207 ms, with a pass margin as thin as 2%. |
 | Are joins and team creation under 200 ms p95 at 100 users? | Yes with realistic pauses (about 1 s between actions): join 73.5 ms, create 99.5 ms. No when users never pause: join 707 ms, create 860 ms. |
 | Did correctness survive the load? | Yes. After each of five write-path runs, all invariants held and no contested team took more joiners than it had seats; in the two runs whose per-team output I kept, each of the five one-seat teams went from 1 open seat to 0 with exactly one new member. No 5xx in any run. |
-| Does the live URL meet it? | No. On the free instance, one user alone sees p95 of 131 ms (network included), and 100 users who never pause get 159 requests per second and p95 of 1,002 ms. The p95 evidence in this report is server-side and local; see section 5. |
+| Does the live URL meet it? | No. On the free instance, one user alone sees p95 of 131 ms (network included), and 100 users who never pause get 155 to 159 requests per second and p95 of 1,002 to 1,202 ms (measured before and after gzip, see section 5). The p95 evidence in this report is server-side and local; see section 5. |
 | What limits throughput? | About 150 writes per second on this machine: two shared cores, with the server, MongoDB and k6 all on them. |
 
 ## 2. Method
@@ -76,6 +76,15 @@ In all five runs (`w1`, the 10, 25 and 50 user sweep runs, and the realistic run
 
 The single-user run shows the network alone costs about 70 ms on average and 131 ms at p95 from this location. The 100-user run is queueing on the free instance's small CPU share: 100 / 159 = 629 ms, measured 620 ms. The same code reaches 4,500 to 5,500 requests per second locally, so the difference is the hosting tier, not the code or the query. The requirement is met on the server side by the local runs in section 3; the live URL is a demo on free tiers and does not meet it for 100 users who never pause. Any other number for the live URL would also depend on where the reader is.
 
+**After v21 (precomputed gzip and ETag), same Codespace, same script:**
+
+| Run | Requests/s | avg | p95 | p99 | max |
+|---|---|---|---|---|---|
+| 1 user, 10 s | 12.0 | 82.7 | 90.5 | 200.1 | 383.4 |
+| 100 users, 30 s | 155.1 | 636.2 | 1201.9 | 1499.8 | 1592.2 |
+
+Throughput did not move (155 against 159 requests per second), so the limit is not bytes on the wire; it is the work the free instance can do per second, about 6 ms of its CPU share per request. 100 / 155 = 645 ms, measured 636 ms. The p95 differs between the two runs by 200 ms with no change that should affect it, which is the run-to-run noise on a shared host: the 1-user p99 alone swung from 170 to 200 ms. v21 is still worth having (smaller answers, 304s for browsers) but it did not change this number, and I expected it to.
+
 ## 6. Where my predictions were wrong
 
 | Prediction | What happened |
@@ -84,6 +93,7 @@ The single-user run shows the network alone costs about 70 ms on average and 131
 | The baseline board would pass | It did not, at 612 to 710 ms |
 | Authentication would cost nothing visible | About 7 ms of p95 and 15% of throughput |
 | Writes at 100 users would land at 30 to 150 ms | About 5 times worse with no pauses, because I forgot that the load generator and the database share the cores |
+| Gzip and ETag (v21) would improve the live p95 | Throughput stayed at 155 requests per second and p95 was 1,202 ms against 1,002 ms before: the free instance is limited by CPU per request, not by bytes |
 
 ## 7. Limits of this evidence
 

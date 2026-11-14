@@ -113,13 +113,15 @@ export function createApp(db, client, options = {}) {
   // The web page: the React app built by `npm run build` into dist/. It talks to the API below.
   // Hashed asset files are cached for a year; index.html is never cached, so a deploy is picked up at once.
   const staticDir = options.staticDir ?? fileURLToPath(new URL('../dist', import.meta.url));
-  app.use(
-    express.static(staticDir, {
-      setHeaders(res, file) {
-        res.setHeader('Cache-Control', file.includes(`${'/'}assets${'/'}`) ? 'public, max-age=31536000, immutable' : 'no-cache');
-      },
-    }),
-  );
+  const serveStatic = express.static(staticDir, {
+    setHeaders(res, file) {
+      res.setHeader('Cache-Control', file.includes(`${'/'}assets${'/'}`) ? 'public, max-age=31536000, immutable' : 'no-cache');
+    },
+  });
+  // API paths never name files, so they skip the static handler: without this every API call
+  // began with a failed file lookup, on a host where each request already has little CPU.
+  const API_PATH = /^\/(auth|me|hackathons|teams|healthz)(\/|$)/;
+  app.use((req, res, next) => (API_PATH.test(req.path) ? next() : serveStatic(req, res, next)));
 
   const wrap = (fn) => (req, res) =>
     fn(req, res).catch((err) => {

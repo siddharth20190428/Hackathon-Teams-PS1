@@ -13,6 +13,7 @@ describe('my team and the web page', () => {
     mkdirSync(join(staticDir, 'assets'));
     writeFileSync(join(staticDir, 'index.html'), '<!doctype html><title>Team Finder</title><div id="root"></div>');
     writeFileSync(join(staticDir, 'assets', 'app-abc123.js'), 'console.log(1)');
+    writeFileSync(join(staticDir, 'me'), 'a file that must never answer an API path');
     env = await setup({ staticDir });
     const users = ['alice', 'bob', 'carol'].map((id) => ({
       _id: id,
@@ -91,6 +92,8 @@ describe('my team and the web page', () => {
 
     const api = await env.raw('GET', '/hackathons/h1/board');
     expect(api.status).toBe(401); // the API is still behind the session
+    // A file named like an API path must not answer it: API paths skip the static handler.
+    expect((await env.raw('GET', '/me')).status).toBe(401);
     // Unknown paths are behind the session too: anonymous callers learn nothing about them,
     // and signed-in callers get the JSON 404.
     const anonymous = await env.raw('GET', '/nope.js');

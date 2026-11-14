@@ -126,6 +126,11 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** see D30. The board and people responses carry a precomputed gzip and ETag; unchanged lists answer 304.
 **Checked:** the size and cost of gzip on a realistic board (6.2 KB to 0.5 KB, 0.07 ms). The 6 new tests are not yet run against a database. **Not yet measured:** the effect on the live URL. That is a k6 run after deploying.
 
+### v21.1: static handler skipped for API paths; think time in the board load script
+**Why:** the v21 live run showed 155 requests per second, unchanged (159 before), so bytes were not the limit; CPU per request on the free host is. Reading the request path found one avoidable step: every API call went through the static file handler first.
+**What:** D31. `load/board.js` gained `THINK_MS`, so the live board can be measured with 100 users who pause (about 100 requests per second) as well as with users who never pause.
+**Checked:** syntax and one new assertion in `test/myteam.test.js` (not yet run against a database). **Not measured:** the effect of the static change on its own.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.
