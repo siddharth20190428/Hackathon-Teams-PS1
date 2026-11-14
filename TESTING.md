@@ -21,7 +21,7 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-99 tests in 13 files.
+105 tests in 14 files.
 
 | File | Tests |
 |---|---|
@@ -38,6 +38,11 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 | `test/tokens.test.js` | Unit tests, no database: token round trip, tampering, expiry with a fake clock, short secret refused; scrypt salt and verification |
 | `test/rateLimit.test.js` | Unit tests, no database: window limits with a fake clock, per-key counting, bounded key count, 429 with `Retry-After` |
 | `test/events.test.js` | Hub unit tests, no database: a burst of publishes becomes one event with the latest version; total and per-user stream caps and freeing a slot on close; a client that is not reading is dropped. T25 over HTTP: 401 without a session; the stream opens with a `ready` event; a new team wakes the stream and the board read right after shows it; 15 parallel creates send fewer events than writes, versions never go backwards, and the board then shows all 15; a failed write sends no event; the per-user cap returns 429 and frees on close |
+| `test/myteam.test.js` | Needs a session. Empty for someone with no team. The leader sees the team, named members, the invite code and pending requests. A member sees the team without the invite code or requests (the code appears nowhere in the response). The view follows leaving and leader succession. The page is served at `/` with the security headers, the API stays behind the session, unknown paths are 401 for anonymous callers and a JSON 404 when signed in |
+
+## Web page check
+
+The page itself has no automated test in the repository. It was checked by hand in a real browser (Chromium, driven by a script) against a stub API with the same response shapes: sign-up validation message, live board growth after another user's action, wrong invite code, create team, leader view, accept a request, new invite code, two-click leave, sign out and a bad sign-in, on desktop and phone widths, with a name containing HTML to confirm it is shown as text. No script errors and no Content-Security-Policy violations. It has not yet been run against the real server and database.
 
 ## Deployment smoke test
 

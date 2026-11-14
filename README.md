@@ -21,7 +21,8 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Rate limits, input validation (zod) | Done: in-memory limits on login, auth and invite-code guesses; strict schemas |
 | Live board updates (SSE) | Done: a "board changed" signal; the client re-reads the board |
 | Deployment (Render + Atlas), smoke test | Config and script written; not yet run against a live URL. See [docs/DEPLOY.md](docs/DEPLOY.md) |
-| Teammate suggestions, React UI | Not built |
+| Web page (plain JavaScript, served by the API): sign in, board with live updates, create team, join with code, ask to join, manage your team | Done; checked in a real browser against a stub API, not yet against the real server |
+| Teammate suggestions | Not built |
 | CI | Workflow included; first run to be confirmed |
 | Live deployment | Not deployed yet |
 
@@ -88,6 +89,8 @@ Set `SESSION_SECRET` (32+ characters) in `.env` before starting; the server refu
 Every route except `/healthz`, `POST /auth/register`, `POST /auth/login` and `POST /auth/logout` needs a session: the `session` cookie set by register or login, or an `Authorization: Bearer <token>` header. Tokens are HMAC-signed, expire after 7 days and are not stored server side, so logout only clears the cookie. Passwords are hashed with scrypt. Bad input gets 400 `VALIDATION_ERROR` with a `details` list; unknown fields are rejected. Rate limits answer 429 `RATE_LIMITED` with `Retry-After`: 30 auth requests per minute per IP, 10 login attempts per 15 minutes per email, 10 invite-code attempts per minute per user and 300 per IP. Limits are per process (single instance).
 
 Every `POST` and `DELETE` also needs an `Idempotency-Key` header (8 to 128 characters: letters, digits, `_ . : -`). Send the same key when retrying a request: the first answer is stored and returned again (with `Idempotent-Replayed: true`) and nothing runs twice. The same key with a different request gets 422. Keys are per user and expire after 24 hours. Every response carries an `X-Request-Id` header (send your own `X-Request-Id` to choose it); the audit log records it.
+
+`GET /hackathons/:hid/my-team` returns your team, your role and the members with names; for the leader it also has the invite code and the pending join requests. The web page is served from `/` (files in `public/`, no build step).
 
 `GET /hackathons/:hid/board/events` is a server-sent event stream. Events: `ready` once on connect, then `board` with `{"version":n}` whenever a successful write may have changed the board (bursts are merged into one event, about a 100 ms window). It carries no data: re-read `GET /hackathons/:hid/board`. A client that reconnects or sees a version gap simply re-reads. Limits: 5 streams per user (429), 2,000 in total (503). Single instance only.
 

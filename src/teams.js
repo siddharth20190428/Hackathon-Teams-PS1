@@ -277,3 +277,47 @@ export async function removeMember(db, client, { teamId, actorId, targetUserId }
     return { teamId, removed: targetUserId };
   });
 }
+
+// "My team" for the UI: the caller's team, their role, the members with names and, for the
+// leader only, the invite code and the pending join requests. Two plain reads, not a
+// transaction: a change between them gives a view that was true a moment ago, which is fine
+// for a screen that refreshes on every board event.
+export async function getMyTeam(db, { hackathonId, userId }) {
+  const membership = await db.collection('memberships').findOne({ hackathonId, userId });
+  if (!membership) return { team: null };
+  const isLeader = membership.role === 'leader';
+  const team = await db
+    .collection('teams')
+    .findOne({ _id: membership.teamId }, { projection: isLeader ? {} : PUBLIC_TEAM });
+  if (!team) return { team: null };
+
+  const rows = await db
+    .collection('memberships')
+    .find({ teamId: team._id })
+    .sort({ joinedAt: 1, _id: 1 })
+    .limit(50)
+    .toArray();
+  const requests = isLeader
+    ? await db
+        .collection('joinRequests')
+        .find({ teamId: team._id, status: 'pending' })
+        .sort({ createdAt: 1, _id: 1 })
+        .limit(100)
+        .toArray()
+    : [];
+
+  const ids = [...new Set([...rows.map((r) => r.userId), ...requests.map((r) => r.userId)])];
+  const users = await db
+    .collection('users')
+    .find({ _id: { $in: ids } }, { projection: { displayName: 1 } })
+    .toArray();
+  const nameOf = new Map(users.map((u) => [u._id, u.displayName]));
+  const name = (id) => nameOf.get(id) ?? id;
+
+  return {
+    team,
+    role: membership.role,
+    members: rows.map((r) => ({ userId: r.userId, displayName: name(r.userId), role: r.role, joinedAt: r.joinedAt })),
+    requests: requests.map((r) => ({ _id: r._id, userId: r.userId, displayName: name(r.userId), createdAt: r.createdAt })),
+  };
+}

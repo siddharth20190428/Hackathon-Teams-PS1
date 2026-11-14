@@ -84,6 +84,12 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** `render.yaml` (free web service, one instance), `docs/DEPLOY.md` (Atlas, seeding, Render, cold starts, troubleshooting, rollback), `scripts/smoke.js` (the user journey over the public URL), and graceful shutdown on SIGTERM so deploys do not cut off requests or leave the live streams open.
 **Result:** pending: to be recorded after the first deploy and smoke run.
 
+## v13: web page (patch 0021)
+
+**Why:** a live URL that only speaks JSON cannot be judged on UX, and the brief needs a usable interface.
+**What:** `GET /hackathons/:hid/my-team` (the page could not show your team otherwise), a plain JavaScript page served by the API, security headers with a Content-Security-Policy. React was dropped for a no-build page (DECISIONS D26).
+**Result:** 6 new tests, 105 in total, not yet run by me against a database. The page was checked in a browser against a stub API (see TESTING.md). A design flaw avoided: refreshing "your team" on every live event would send one uncached read per open page per event.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.

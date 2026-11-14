@@ -1,5 +1,6 @@
 import express from 'express';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import {
   createTeam,
   joinByCode,
@@ -9,6 +10,7 @@ import {
   removeMember,
   getBoard,
   getTeam,
+  getMyTeam,
 } from './teams.js';
 import { createBoardCache } from './boardCache.js';
 import { createBoardEvents } from './boardEvents.js';
@@ -74,6 +76,23 @@ export function createApp(db, client, options = {}) {
   // is filled in once the request is authenticated.
   app.use((req, res, next) => requestContext.run({ requestId: req.requestId, actorId: null }, next));
   app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+  // Security headers on every response. The page loads only its own script and style, so the
+  // policy forbids everything else: injected markup could not load or run foreign code.
+  app.use((req, res, next) => {
+    res.set({
+      'Content-Security-Policy':
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; " +
+        "base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+      'X-Frame-Options': 'DENY',
+    });
+    next();
+  });
+
+  // The web page: plain files in /public, no build step. It talks to the API below.
+  app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 
   const wrap = (fn) => (req, res) =>
     fn(req, res).catch((err) => {
@@ -274,6 +293,13 @@ export function createApp(db, client, options = {}) {
       res.json(
         await listAudit(db, { teamId: req.params.id, actorId: req.userId, limit: req.query.limit }),
       );
+    }),
+  );
+
+  app.get(
+    '/hackathons/:hid/my-team',
+    wrap(async (req, res) => {
+      res.json(await getMyTeam(db, { hackathonId: req.params.hid, userId: req.userId }));
     }),
   );
 
