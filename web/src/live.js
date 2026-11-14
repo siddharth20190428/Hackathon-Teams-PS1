@@ -5,9 +5,11 @@ import { api, routes } from './api.js';
 //
 // - The board and the people list refresh on every live event. They are one cached read each
 //   on the server, so a burst of events costs one query, not one per open page.
-// - "Your team" is not cached on the server, so it is not refreshed on every event. It
-//   refreshes after your own actions, when the stream (re)connects, when the tab comes back,
-//   and every 15 s while you are in a team.
+// - "Your team" is not cached on the server, so it is not refreshed on every event. Each event
+//   says which teams it touched and whether it involves you, so it is re-read only when the
+//   event names your team or you. It also refreshes after your own actions, when the stream
+//   (re)connects, when the tab comes back, and every 60 s as a safety net.
+// - An event that says the board did not change (a join request, a decline) skips the board.
 // - State is only replaced when the data really changed, so quiet refreshes cause no re-render.
 export function useLiveData() {
   const [board, setBoard] = useState(null); // null while the first load is running
@@ -16,6 +18,7 @@ export function useLiveData() {
   const [live, setLive] = useState('connecting');
   const [loadFailed, setLoadFailed] = useState(false);
   const seen = useRef({ board: '', people: '', mine: '' });
+  const myTeam = useRef(null); // read by the stream handler without re-opening the stream
 
   const update = useCallback((key, value, setter) => {
     const json = JSON.stringify(value);
@@ -31,7 +34,9 @@ export function useLiveData() {
   }, [update]);
 
   const refreshMine = useCallback(async () => {
-    update('mine', await api('GET', routes.myTeam), setMine);
+    const next = await api('GET', routes.myTeam);
+    myTeam.current = next.team?._id ?? null;
+    update('mine', next, setMine);
   }, [update]);
 
   const refreshAll = useCallback(
@@ -49,6 +54,7 @@ export function useLiveData() {
     let es;
     let retry;
     let debounce;
+    let mineDebounce;
     const open = () => {
       setLive('connecting');
       es = new EventSource(routes.events);
@@ -56,9 +62,22 @@ export function useLiveData() {
         setLive('live');
         refreshAll().catch(() => {}); // an event may have been missed while disconnected
       });
-      es.addEventListener('board', () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => refreshBoard().catch(() => {}), 150);
+      es.addEventListener('board', (e) => {
+        let ev = null;
+        try {
+          ev = JSON.parse(e.data);
+        } catch {
+          /* an unreadable event: refresh everything to be safe */
+        }
+        if (ev?.board !== false) {
+          clearTimeout(debounce);
+          debounce = setTimeout(() => refreshBoard().catch(() => {}), 150);
+        }
+        const affectsMe = !ev || ev.me === true || ev.teams == null || (myTeam.current && ev.teams.includes(myTeam.current));
+        if (affectsMe) {
+          clearTimeout(mineDebounce);
+          mineDebounce = setTimeout(() => refreshMine().catch(() => {}), 150);
+        }
       });
       es.onerror = () => {
         if (es.readyState === EventSource.CLOSED) {
@@ -73,18 +92,19 @@ export function useLiveData() {
     return () => {
       clearTimeout(retry);
       clearTimeout(debounce);
+      clearTimeout(mineDebounce);
       es?.close();
     };
-  }, [refreshAll, refreshBoard]);
+  }, [refreshAll, refreshBoard, refreshMine]);
 
-  // Coming back to the tab, and a slow poll for the team panel.
+  // Coming back to the tab, and a slow safety-net poll for the team panel.
   const inTeam = Boolean(mine?.team);
   useEffect(() => {
     const onVisible = () => document.visibilityState === 'visible' && refreshAll().catch(() => {});
     document.addEventListener('visibilitychange', onVisible);
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible' && inTeam) refreshMine().catch(() => {});
-    }, 15_000);
+    }, 60_000);
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       clearInterval(timer);

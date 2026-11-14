@@ -106,6 +106,11 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** `PATCH /me` (name, skills, time zone; any subset, at least one; strict schema, so email, password and ids cannot be sent; skills de-duplicated). It runs in one transaction with an audit entry (`PROFILE_UPDATED`, field names only) and with the copy of the name stored on teams the user leads (`leaderName`), so the board never shows an old name. The generic write hook drops the board cache and publishes a live event, so People and suggestions update at once. In the app: an "Edit profile" dialog (click your name), and a dismissible prompt while you have no skills.
 **Checked:** the dialog and prompt in a browser against the stub. The 8 new API tests (`test/profile.test.js`) are written but not yet run against a database.
 
+### v18: team-scoped live events
+**Why:** a leader only learned about a new join request by polling every 15 s. Reading the code showed why: join requests and declines skipped the board cache invalidation, and that same flag also skipped the event, so nothing was ever pushed. The obvious fix, an event for every write, would make every open page re-read its own team on every event.
+**What:** an event now says what changed: `board` (false for a request or decline, so pages skip the board read), `teams` (ids; they are already public on the board) and `me` (true when the person on that stream is involved, decided per stream so no event contains another user's id). Bursts merge: flags are OR-ed and ids unioned, and more than 100 ids collapse to "any". The page re-reads "your team" only when an event names its team or it is involved; the poll is now a 60 s safety net. A profile edit says "any team", since a name can appear anywhere.
+**Checked:** the merge logic in isolation (6 assertions, run in a scratch script) and in a browser against a stub (the request appears in under 3 s with no polling). The 3 new HTTP tests (join request wakes the leader with `board:false`; accepting tells the requester `me:true` and a bystander `me:false`) have not been run against a database.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.

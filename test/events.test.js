@@ -44,6 +44,40 @@ describe('board events hub (no database)', () => {
     hub.close();
   });
 
+  const lastEvent = (s) => JSON.parse(/data: (.+)/.exec(s.res.chunks.filter((c) => c.includes('event: board')).at(-1))[1]);
+
+  it('merges what a burst touched: flags are OR-ed, ids are unioned, and each stream learns only about itself', async () => {
+    const hub = createBoardEvents({ coalesceMs: 20 });
+    const u1 = fakeStream();
+    const u3 = fakeStream();
+    hub.subscribe(u1.req, u1.res, 'u1');
+    hub.subscribe(u3.req, u3.res, 'u3');
+    hub.publish({ board: false, teams: ['a'], users: ['u1'] });
+    hub.publish({ board: false, teams: ['b', 'a'], users: ['u2'] });
+    await sleep(60);
+    expect(lastEvent(u1)).toEqual({ version: 2, board: false, teams: ['a', 'b'], me: true });
+    expect(lastEvent(u3)).toEqual({ version: 2, board: false, teams: ['a', 'b'], me: false });
+    expect(u1.res.chunks.join('')).not.toContain('u2'); // ids of other people never go out
+    hub.publish({ board: false, teams: ['c'], users: [] });
+    hub.publish({ board: true, teams: [], users: [] });
+    await sleep(60);
+    expect(lastEvent(u3)).toMatchObject({ board: true, teams: ['c'], me: false });
+    hub.close();
+  });
+
+  it('publish() with no scope means any team and anyone; too many ids collapse to "any"', async () => {
+    const hub = createBoardEvents({ coalesceMs: 10 });
+    const s = fakeStream();
+    hub.subscribe(s.req, s.res, 'u1');
+    hub.publish();
+    await sleep(40);
+    expect(lastEvent(s)).toMatchObject({ board: true, teams: null, me: true });
+    hub.publish({ board: false, teams: Array.from({ length: 101 }, (_, i) => `t${i}`), users: [] });
+    await sleep(40);
+    expect(lastEvent(s)).toMatchObject({ board: false, teams: null, me: false });
+    hub.close();
+  });
+
   it('refuses streams beyond the total and per-user caps, and frees a slot on close', () => {
     const hub = createBoardEvents({ maxStreams: 3, maxPerUser: 2 });
     const open = (user) => {
@@ -176,6 +210,38 @@ describe('board events over HTTP', () => {
     await sleep(120);
     expect(s.boards().length).toBe(before);
     s.close();
+  });
+
+  it('a join request wakes the leader without saying the board changed; accepting tells the requester', async () => {
+    await env.db.collection('users').insertMany(
+      ['lead-x', 'ask-x', 'bystander-x'].map((id) => ({ _id: id, email: `${id}@example.test`, displayName: id, skills: [], utcOffsetMinutes: 0 })),
+    );
+    const team = (await env.call('POST', '/hackathons/h1/teams', 'lead-x', { name: 'scoped-team' })).body;
+    const lead = await openStream(env, 'lead-x');
+    const asker = await openStream(env, 'ask-x');
+    const other = await openStream(env, 'bystander-x');
+    await until(() => lead.events.length && asker.events.length && other.events.length);
+    await sleep(100);
+    const mark = [lead, asker, other].map((s) => s.boards().length);
+
+    const asked = await env.call('POST', `/teams/${team._id}/join-requests`, 'ask-x', {});
+    expect(asked.status).toBe(201);
+    expect(await until(() => lead.boards().length > mark[0])).toBe(true);
+    const onAsk = lead.boards().at(-1).data;
+    expect(onAsk.board).toBe(false); // the board did not change, so pages skip re-reading it
+    expect(onAsk.teams).toEqual([String(team._id)]);
+
+    const requestId = asked.body.requestId;
+    await sleep(100);
+    const before = asker.boards().length;
+    const accepted = await env.call('POST', `/teams/${team._id}/join-requests/${requestId}/accept`, 'lead-x', {});
+    expect(accepted.status).toBe(200);
+    expect(await until(() => asker.boards().length > before)).toBe(true);
+    const toAsker = asker.boards().at(-1).data;
+    const toOther = other.boards().at(-1).data;
+    expect([toAsker.me, toAsker.board, toAsker.teams]).toEqual([true, true, [String(team._id)]]);
+    expect(toOther.me).toBe(false);
+    for (const s of [lead, asker, other]) s.close();
   });
 
   it('limits streams per user and frees the slot when one closes', async () => {

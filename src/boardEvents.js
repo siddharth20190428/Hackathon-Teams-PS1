@@ -7,10 +7,19 @@
 // - publish() is called after the board cache is invalidated, so a client that reacts to an
 //   event and re-reads the board never gets the old body.
 // - Bursts are coalesced: any number of writes inside one window produce one event.
+// - Every event says what changed, so a page can skip work that is not its own:
+//     board: did the board (teams or people) change? false for a join request or a decline.
+//     teams: ids of the teams involved (already public on the board), or null for "any".
+//     me:    true when the person on THIS stream is involved (for example their join request was
+//            accepted). The server decides per stream, so no event ever lists user ids.
+//   Bursts merge: the flags are OR-ed and the ids are unioned.
 // - Every event carries a version. A client that sees a gap or reconnects just re-reads.
 // - Bounded: total streams, streams per user, and slow clients are dropped.
 // - Single instance only: another process has its own streams and would not hear our writes.
 //   Change streams are the upgrade path (the same as for the board cache).
+const MAX_IDS = 100; // beyond this a merged event just says "any team / anyone"
+const emptyPending = () => ({ board: false, teams: new Set(), users: new Set(), allTeams: false, allUsers: false });
+
 export function createBoardEvents({
   coalesceMs = 100,
   heartbeatMs = 25_000,
@@ -21,6 +30,7 @@ export function createBoardEvents({
   const streams = new Map(); // res -> userId
   const perUser = new Map(); // userId -> count
   let version = 0;
+  let pending = emptyPending();
   let timer = null;
   let heartbeat = null;
 
@@ -48,12 +58,31 @@ export function createBoardEvents({
 
   function flush() {
     timer = null;
-    const message = `id: ${version}\nevent: board\ndata: {"version":${version}}\n\n`;
-    for (const res of [...streams.keys()]) write(res, message);
+    const p = pending;
+    pending = emptyPending();
+    const teams = p.allTeams ? 'null' : JSON.stringify([...p.teams]);
+    const head = `id: ${version}\nevent: board\ndata: {"version":${version},"board":${p.board},"teams":${teams},"me":`;
+    for (const [res, userId] of [...streams]) {
+      write(res, `${head}${p.allUsers || p.users.has(userId)}}\n\n`);
+    }
   }
 
-  function publish() {
+  // publish() with no argument means "the board changed and anyone may be involved".
+  // scope: { board = true, teams, users } where teams and users are arrays of ids; leave one
+  // out (undefined) to mean "any".
+  function publish({ board = true, teams, users } = {}) {
     version++;
+    pending.board ||= board;
+    const merge = (list, set, flag) => {
+      if (list === undefined) pending[flag] = true;
+      else for (const id of list) set.add(String(id));
+      if (set.size > MAX_IDS) {
+        pending[flag] = true;
+        set.clear();
+      }
+    };
+    merge(teams, pending.teams, 'allTeams');
+    merge(users, pending.users, 'allUsers');
     if (!timer) timer = setTimeout(flush, coalesceMs);
   }
 

@@ -50,6 +50,17 @@ const DEFAULT_LIMITS = {
   suggestionsPerUser: { windowMs: 60_000, max: 20 }, // teammate suggestions (the heaviest read)
 };
 
+// Who an event is about. A profile edit can change names on any team, so it says "any".
+function eventScope(req, body, board) {
+  if (req.path === '/me') return { board };
+  const ids = (...values) => values.filter((v) => v != null).map(String);
+  return {
+    board,
+    teams: ids(req.params.id, body?.teamId, body?._id),
+    users: ids(req.userId, req.params.uid, body?.userId, body?.removed, body?.newLeaderId),
+  };
+}
+
 export function createApp(db, client, options = {}) {
   if (!options.secret) throw new Error('createApp needs options.secret (SESSION_SECRET)');
   const tokens = options.tokens ?? createTokens(options.secret);
@@ -127,7 +138,7 @@ export function createApp(db, client, options = {}) {
       setSessionCookie(res, tokens, user.id, { secure });
       // A new person appears in the "people looking for a team" list.
       boardCache.invalidate();
-      boardEvents.publish();
+      boardEvents.publish({ board: true, teams: [], users: [user.id] });
       res.status(201).json({ user });
     }),
   );
@@ -169,14 +180,17 @@ export function createApp(db, client, options = {}) {
   app.use(idempotency(db));
 
   // Any successful write may change the board, so drop the cache just before answering.
-  // Routes that cannot change the board set res.locals.skipBoardInvalidation.
+  // Routes that cannot change the board set res.locals.skipBoardInvalidation: they still send
+  // an event (a leader must see a new join request), but one that says the board is unchanged.
+  // The event names the teams and the people involved, read from the route and the response.
   app.use((req, res, next) => {
     if (req.method !== 'GET') {
       const json = res.json.bind(res);
       res.json = (body) => {
-        if (res.statusCode < 400 && !res.locals.skipBoardInvalidation) {
-          boardCache.invalidate(); // first, so a client woken by the event reads fresh data
-          boardEvents.publish();
+        if (res.statusCode < 400) {
+          const boardChanged = !res.locals.skipBoardInvalidation;
+          if (boardChanged) boardCache.invalidate(); // first, so a client woken by the event reads fresh data
+          boardEvents.publish(eventScope(req, body, boardChanged));
         }
         return json(body);
       };
