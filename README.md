@@ -18,7 +18,7 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Write paths under load (join, create) | Correct in every run (invariants held, no contested team over its seats). p95 under 200 ms with realistic pauses (join 73.5 ms, create 99.5 ms); misses it when 100 users never pause (saturation at about 150 writes per second on 2 shared cores) |
 | Join requests (request, list, accept, decline, cancel) | Done |
 | Real authentication | Done: email and password (scrypt), signed session token in an httpOnly cookie or Bearer header |
-| Idempotency keys on every write, audit log per team | Done |
+| Idempotency keys on every write, audit log per team | Done, with a History panel on the team page (who did what, newest first) |
 | Rate limits, input validation (zod) | Done: in-memory limits on login, auth and invite-code guesses; strict schemas |
 | Live board updates (SSE) | Done: a "board changed" signal; the client re-reads the board |
 | Deployment (Render + Atlas), smoke test | Done: https://hackathon-teams.onrender.com ; `scripts/smoke.js` passes against it. See [docs/DEPLOY.md](docs/DEPLOY.md) |
@@ -26,7 +26,17 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Teammate suggestions (ranked by complementary skills and time zone, scoring explained) | Done, on the API and in the app |
 | "People looking for a team" list | Done: `GET /hackathons/:hid/people` and the People tab, live |
 | CI | Passing on every push: tests, 20-round race test, chaos test (2 rounds), 10,000-user seed with invariant check |
+| Docker Compose (MongoDB replica set + app, optional seed) | Written: `docker compose up --build`; not exercised in CI |
 | Chaos test (kill the server mid-join, retry, verify) | Done: `npm run chaos`; found and fixed a real bug. Recovery after a hard kill is 30 to 90 s on contended teams. See [TESTING.md](TESTING.md) |
+
+## Run it with Docker Compose
+
+```
+docker compose up --build              # MongoDB (replica set) + the app on http://localhost:3000
+docker compose run --rm seed           # first time: 10,000 users, 2,000 teams, invariant check
+```
+
+`docker-compose.yml` starts MongoDB as a single-node replica set (transactions need one) and waits until it has a primary before the app starts. The seed service is on demand (`--profile seed` is implied by `run`). Set `SESSION_SECRET` in your shell for anything beyond local use. Not run in CI: the compose file was written and reviewed but is the least-tested part of the repo.
 
 ## Quick start
 
@@ -114,7 +124,7 @@ Every `POST` and `DELETE` also needs an `Idempotency-Key` header (8 to 128 chara
 | `POST /teams/:id/join-requests/:rid/accept` | leader | `{ requestId, teamId, userId }`; the requester becomes a member |
 | `POST /teams/:id/join-requests/:rid/decline` | leader | `{ requestId, status: "declined" }` |
 | `DELETE /teams/:id/join-requests/:rid` | the requester | `{ requestId, status: "cancelled" }` |
-| `GET /teams/:id/audit?limit=50` | team members | `{ entries }`: newest first, at most 200 |
+| `GET /teams/:id/audit?limit=50` | team members | `{ entries, names }`: newest first, at most 200; `names` maps user id to display name |
 | `GET /hackathons/:hid/board` | any user | `{ teams }`: open teams, newest first, invite fields hidden |
 | `GET /teams/:id` | any user | the team, invite fields hidden |
 

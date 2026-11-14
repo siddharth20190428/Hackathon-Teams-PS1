@@ -10,6 +10,7 @@ export function AuthPage() {
   const uid = useId();
   const [mode, setMode] = useState('login');
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState('');
   const [pending, setPending] = useState(false);
   const [skills, setSkills] = useState([]);
   const [offset, setOffset] = useState(detectedOffset);
@@ -19,6 +20,7 @@ export function AuthPage() {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     setError('');
+    setErrorCode('');
     setPending(true);
     try {
       if (creating) {
@@ -34,6 +36,7 @@ export function AuthPage() {
       }
     } catch (err) {
       setError(messageFor(err));
+      setErrorCode(err.code ?? '');
       setPending(false);
     }
   }
@@ -92,7 +95,20 @@ export function AuthPage() {
 
           {error && (
             <p className="form__error" role="alert">
-              <Icon name="alert" size={16} /> {error}
+              <Icon name="alert" size={16} />
+              <span>
+              {error}
+              {/* The server answers the same for an unknown email and a wrong password (so nobody can
+                  probe which emails exist), so the page offers sign-up on every failed sign-in. */}
+              {!creating && errorCode === 'INVALID_CREDENTIALS' && (
+                <>
+                  {' '}No account yet?{' '}
+                  <button type="button" className="link" onClick={() => { setMode('register'); setError(''); setErrorCode(''); }}>
+                    Create one
+                  </button>
+                </>
+              )}
+              </span>
             </p>
           )}
           <Button type="submit" size="lg" loading={pending}>
@@ -108,6 +124,7 @@ export function AuthPage() {
             onClick={() => {
               setMode(creating ? 'login' : 'register');
               setError('');
+              setErrorCode('');
               setPending(false);
             }}
           >

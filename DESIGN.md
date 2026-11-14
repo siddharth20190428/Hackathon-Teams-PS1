@@ -69,7 +69,7 @@ Every `POST` and `DELETE` carries an `Idempotency-Key`. The middleware claims th
 
 ### Audit log
 
-Each state change writes its audit entry inside the same transaction, so a change and its log entry commit together or not at all, and a failed action leaves nothing behind. Entries record who acted (from the request context), the target user, the action, the request id (echoed to the client as `X-Request-Id`) and a small summary. Invite codes are never written to it. Team members can read their team's log; a deleted team's history stays in the database but has no endpoint.
+Each state change writes its audit entry inside the same transaction, so a change and its log entry commit together or not at all, and a failed action leaves nothing behind. Entries record who acted (from the request context), the target user, the action, the request id (echoed to the client as `X-Request-Id`) and a small summary. Invite codes are never written to it. Team members can read their team's log (the response carries a map of display names, and the team page shows it as a History panel); a deleted team's history stays in the database but has no endpoint.
 
 ### Join requests
 
@@ -126,7 +126,7 @@ The "people looking for a team" list is the people with no membership in the hac
 
 ## 9. Not built yet
 
-Cursor pagination of the board, an audit-log screen (the API exists), an automated browser test, metrics and tracing, Docker Compose, and anything that needs more than one instance (see section 8). Known gaps found by the chaos test: a hard crash stalls joins on contended teams for 30 to 90 s, and a join that committed just before the crash can be answered ALREADY_IN_TEAM on retry because the idempotency response is stored outside the join transaction.
+Cursor pagination of the board, an automated browser test, metrics and tracing, and anything that needs more than one instance (see section 8). Known gaps found by the chaos test: a hard crash stalls joins on contended teams for 30 to 90 s, and a join that committed just before the crash can be answered ALREADY_IN_TEAM on retry because the idempotency response is stored outside the join transaction.
 
 ## 10. With one more week
 

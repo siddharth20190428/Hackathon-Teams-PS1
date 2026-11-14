@@ -8,6 +8,7 @@ import { formatDateTime } from '../format.js';
 import { Avatar, Button, Field, Seats, SkeletonList, StatusBadge } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 import { Suggestions } from './Suggestions.jsx';
+import { History } from './History.jsx';
 
 function NoTeam({ refresh }) {
   const uid = useId();
@@ -282,6 +283,12 @@ export function MyTeam({ mine, meId, refresh, onDeclined }) {
       )}
 
       {!full && !locked && <Suggestions teamId={team._id} memberCount={team.memberCount} profileKey={`${user.skills.join()}|${user.utcOffsetMinutes}`} />}
+
+      <History
+        teamId={team._id}
+        meId={meId}
+        watch={`${team.version ?? ''}|${team.memberCount}|${team.status}|${members.map((m) => m.userId).join()}|${requests.length}`}
+      />
 
       <Button variant="danger-ghost" icon="door" onClick={leave} loading={pending}>Leave team</Button>
     </div>

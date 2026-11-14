@@ -21,7 +21,7 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-162 tests in 19 files.
+163 tests in 19 files.
 
 | File | Tests |
 |---|---|

@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.github
+.env
+reports
+load/fixtures.json
+test
+docs
+*.md

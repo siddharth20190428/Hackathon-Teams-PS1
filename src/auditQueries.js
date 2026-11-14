@@ -1,7 +1,7 @@
 import { httpError } from './errors.js';
 import { toId } from './teams.js';
 
-// Team members can read their team's log, newest first.
+// Team members can read their team's log, newest first, with a map of user id to display name.
 export async function listAudit(db, { teamId, actorId, limit = 50 }) {
   const _id = toId(teamId);
   const member = await db
@@ -18,5 +18,17 @@ export async function listAudit(db, { teamId, actorId, limit = 50 }) {
     .sort({ ts: -1, _id: -1 })
     .limit(n)
     .toArray();
-  return { entries };
+  // Names for the people in the entries, so a screen can say "Priya joined" without a lookup per
+  // row. Anyone no longer in the users collection simply has no name here.
+  const ids = new Set();
+  for (const e of entries) {
+    for (const id of [e.actorId, e.targetUserId, e.summary?.from]) if (typeof id === 'string') ids.add(id);
+  }
+  const names = {};
+  if (ids.size) {
+    for await (const u of db.collection('users').find({ _id: { $in: [...ids] } }, { projection: { displayName: 1 } })) {
+      names[u._id] = u.displayName;
+    }
+  }
+  return { entries, names };
 }

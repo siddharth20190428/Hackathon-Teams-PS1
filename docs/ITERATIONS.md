@@ -136,6 +136,15 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** `STAGGER_MS` in `load/board.js`: each user's first request waits a random 0 to STAGGER_MS. Both numbers go in the report.
 **Not measured yet:** the staggered figure.
 
+### v28: History panel and Docker Compose
+**Why:** the audit log existed only as an API, so it could not be shown; and the brief lists Docker Compose as a bonus.
+**What:** `GET /teams/:id/audit` now also returns `names` (user id to display name, one query for the whole page). The team page has a History panel for every member (sentences like "Priya joined after Sam accepted the request", "You" for the signed-in person, "A former member" for a missing account). `Dockerfile` (two stages, runs as the non-root user), `docker-compose.yml` (MongoDB as a replica set with a self-initialising healthcheck, the app, an on-demand seed service).
+**Result:** 1 new test (names), 163 in total. The panel was checked in a browser against the stub API. The Docker files were not run by me and are not in CI.
+
+### v28.1: sign-up offered after a failed sign-in
+**Why:** a person with no account who tries to sign in sees "Wrong email or password", which is correct (the server answers the same for an unknown email and a wrong password, so nobody can probe which emails exist) but gives a first-time user no next step.
+**What:** after a failed sign-in the error also says "No account yet? Create one", which switches to the sign-up form. It appears on every failed sign-in, so it reveals nothing about the email.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.

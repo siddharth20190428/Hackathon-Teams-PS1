@@ -120,4 +120,22 @@ describe('audit log', () => {
     await env.db.collection('teams').updateOne({ _id: new ObjectId(teamId) }, { $inc: { memberCount: -1, openSeats: 1 } });
     expect(await checkInvariants(env.db)).toEqual([]);
   });
+
+  it('the log comes with display names for the people in it', async () => {
+    const reg = await env.raw('POST', '/auth/register', {
+      body: { email: 'names@example.com', password: 'a-long-enough-password', displayName: 'Nadia Names' },
+    });
+    expect(reg.status).toBe(201);
+    const leaderId = reg.body.user.id;
+    const created = await env.call('POST', '/hackathons/h1/teams', leaderId, { name: 'names-team' });
+    expect(created.status).toBe(201);
+    const res = await env.call('GET', `/teams/${created.body._id}/audit`, leaderId);
+    expect(res.status).toBe(200);
+    expect(res.body.names[leaderId]).toBe('Nadia Names');
+    // A person with no account record has no name; the entry is still there.
+    const ghost = await makeTeam('ghost');
+    const g = await env.call('GET', `/teams/${ghost}/audit`, 'ghost-leader');
+    expect(g.body.entries).toHaveLength(1);
+    expect(g.body.names).toEqual({});
+  });
 });

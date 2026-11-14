@@ -136,3 +136,47 @@ export const formatDateTime = (iso) =>
   new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 
 export const percent = (score) => Math.round(score * 100);
+
+// One audit entry as a sentence. `names` maps user id to display name (the server sends it with
+// the entries); the signed-in person reads as "You", a missing name as "A former member".
+export function describeAudit(entry, names, meId) {
+  const who = (id) => (!id ? 'The system' : id === meId ? 'You' : (names?.[id] ?? 'A former member'));
+  const actor = who(entry.actorId);
+  const target = who(entry.targetUserId);
+  const s = entry.summary ?? {};
+  switch (entry.action) {
+    case 'TEAM_CREATED':
+      return { icon: 'plus', text: `${actor} created the team` };
+    case 'MEMBER_JOINED':
+      return {
+        icon: 'users',
+        text: s.via === 'join_request' ? `${target} joined after ${actor === target ? 'the' : `${actor} accepted the`} request` : `${target} joined with the invite code`,
+      };
+    case 'MEMBER_LEFT':
+      return { icon: 'door', text: `${target} left the team` };
+    case 'MEMBER_REMOVED':
+      return { icon: 'trash', text: `${actor} removed ${target}` };
+    case 'LEADER_CHANGED':
+      return { icon: 'crown', text: `${target} became the leader` };
+    case 'INVITE_REGENERATED':
+      return { icon: 'key', text: `${actor} generated a new invite code` };
+    case 'JOIN_REQUESTED':
+      return { icon: 'mail', text: `${target} asked to join` };
+    case 'JOIN_REQUEST_DECLINED':
+      return { icon: 'x', text: `${actor} declined the request from ${target}` };
+    case 'JOIN_REQUEST_CANCELLED':
+      return { icon: 'x', text: `The request from ${target} was cancelled` };
+    case 'TEAM_LOCKED':
+      return { icon: 'key', text: `${actor} locked the team` };
+    case 'TEAM_UNLOCKED':
+      return {
+        icon: 'refresh',
+        text: s.reason === 'below_minimum' ? 'The team unlocked itself because it fell below the minimum size' : `${actor} unlocked the team`,
+      };
+    case 'PROFILE_UPDATED':
+      return { icon: 'user', text: `${actor} updated their profile${s.fields?.length ? ` (${s.fields.join(', ')})` : ''}` };
+    default:
+      return { icon: 'info', text: entry.action.toLowerCase().replaceAll('_', ' ') };
+  }
+}
+
