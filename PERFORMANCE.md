@@ -125,8 +125,8 @@ Prediction, written before the run: 100 users with a mean pause of 1 s will land
 
 Joins: 303 won a seat, 439 refused (team full or already in a team). Creates: 132 of 132 succeeded. All three operations are under the 200 ms target at p95, with the prediction slightly conservative. The median write is 11 to 13 ms, which is the uncontended cost of a transaction here. Open item: write p99 is about 260 to 270 ms and the max about 300 ms, above the target even though the target is p95. I have not measured the cause; candidates are write-conflict retries on the 5 hot teams and database checkpoints. Together with the stress results above: under a realistic pause the service meets the target with a wide margin; its limit on this hardware is about 150 writes per second.
 
-## Next
+## Open items
 
 1. Find the cause of the write p99 of about 260 to 270 ms (write-conflict retries on hot teams, or database checkpoints). Not investigated.
 2. Run the write-path test on separate machines for the load generator and the database, to measure the app without k6 competing for the cores.
-3. The deployed site (free instance, Atlas M0) gets a smoke test only (`scripts/smoke.js`); it is not load-tested.
+3. The deployed site (free instance, Atlas M0) was load-tested on the board only; the three live runs at 100 users gave p95 of 247, 196 and 344 ms. See [docs/LOAD_TEST_REPORT.md](docs/LOAD_TEST_REPORT.md).

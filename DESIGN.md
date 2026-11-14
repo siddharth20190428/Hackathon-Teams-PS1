@@ -126,8 +126,8 @@ The "people looking for a team" list is the people with no membership in the hac
 
 ## 9. Not built yet
 
-Cursor pagination of the board, a chaos test that kills the server mid-transaction, an automated browser test, and anything that needs more than one instance (see section 8).
+Cursor pagination of the board, an audit-log screen (the API exists), an automated browser test, metrics and tracing, Docker Compose, and anything that needs more than one instance (see section 8). Known gaps found by the chaos test: a hard crash stalls joins on contended teams for 30 to 90 s, and a join that committed just before the crash can be answered ALREADY_IN_TEAM on retry because the idempotency response is stored outside the join transaction.
 
 ## 10. With one more week
 
-Change streams for multi-instance live updates and cache invalidation, a shared rate-limit store, server-side sessions so a login can be revoked, tracing and metrics, a chaos suite that kills the server mid-transaction, and a spike on embedding members in the team document so the seat claim becomes a single-document update.
+Change streams for multi-instance live updates and cache invalidation, a shared rate-limit store, server-side sessions so a login can be revoked, tracing and metrics, writing the idempotency record inside the join transaction, and a spike on embedding members in the team document so the seat claim becomes a single-document update.

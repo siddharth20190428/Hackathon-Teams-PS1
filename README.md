@@ -22,10 +22,11 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Rate limits, input validation (zod) | Done: in-memory limits on login, auth and invite-code guesses; strict schemas |
 | Live board updates (SSE) | Done: a "board changed" signal; the client re-reads the board |
 | Deployment (Render + Atlas), smoke test | Done: https://hackathon-teams.onrender.com ; `scripts/smoke.js` passes against it. See [docs/DEPLOY.md](docs/DEPLOY.md) |
-| React web app (Vite build, served by the API): sign in, live board of teams and people, create team, join with code, ask to join (optimistic, with rollback), manage your team, teammate suggestions with the score explained; works on a phone and with the keyboard, light and dark | Done; checked in a real browser against a stub API. Not yet checked against the running server |
+| React web app (Vite build, served by the API): sign in, live board of teams and people, create team, join with code, ask to join (optimistic, with rollback), manage your team, teammate suggestions with the score explained; works on a phone and with the keyboard, light and dark | Done; checked on the live site, on a phone and keyboard-only |
 | Teammate suggestions (ranked by complementary skills and time zone, scoring explained) | Done, on the API and in the app |
-| "People looking for a team" list | Done on the API: `GET /hackathons/:hid/people`. Not on the page yet |
-| CI | Workflow included; first run to be confirmed |
+| "People looking for a team" list | Done: `GET /hackathons/:hid/people` and the People tab, live |
+| CI | Passing on every push: tests, 20-round race test, chaos test (2 rounds), 10,000-user seed with invariant check |
+| Chaos test (kill the server mid-join, retry, verify) | Done: `npm run chaos`; found and fixed a real bug. Recovery after a hard kill is 30 to 90 s on contended teams. See [TESTING.md](TESTING.md) |
 
 ## Quick start
 
