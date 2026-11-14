@@ -14,8 +14,8 @@ See DESIGN.md section 4. Amended: the seat claim runs first and the membership i
 ## D4. Idempotency keys
 Every `POST` and `DELETE` requires an `Idempotency-Key`. The key is claimed with a unique `(userId, key)` insert; parallel duplicates wait and get the same stored answer; the same key with a different request is 422; 5xx releases the key; stale `processing` records are taken over after 30 s; records expire after 24 h. Rejected: caching only successes (a retry after a stored 409 would then behave differently from the original). Cost: one extra write per request, and the stored response is written just before it is sent, so a crash in that window re-runs the operation (safe: the atomic rules underneath still allow one outcome). Evidence: T3 (10 parallel requests, one key), T3b, T4, T5, T6 and four edge-case tests.
 
-## D5. Live updates: server-sent events (planned)
-One-way updates over plain HTTP with automatic reconnect. Single-instance fan-out; change streams are the upgrade path.
+## D5. Live updates: server-sent events
+One-way updates over plain HTTP with automatic reconnect. Single-instance fan-out; change streams are the upgrade path. Built in v10; the shape of the events is in D24.
 
 ## D6. Authentication
 Email and password, scrypt (built into Node, no extra dependency). A stateless HMAC-signed token in an httpOnly, SameSite=Lax cookie, also accepted as a Bearer header so load tests and curl work. Stateless means no session lookup on every request, at the price that a token cannot be revoked before it expires (7 days). A server-side session store is the upgrade if revocation is needed.
@@ -44,14 +44,14 @@ When the leader leaves, the remaining member with the earliest `joinedAt` (ties 
 ## D11. Audit log
 Append-only, written inside the same transaction as the change, so there is never a change without its entry or an entry without its change. Records actor, target, action, request id and a summary; never invite codes. Members read their team's log. Invariant I-7 reconciles the log with the member count. Cost: one extra write per change.
 
-## D12. Teammate scoring (planned)
-Weighted skill complement and time-zone fit, with the breakdown returned.
+## D12. Teammate scoring (cut)
+Planned: weighted skill complement and time-zone fit, with the breakdown returned. Cut for time after the concurrency work, the write-path load test, deployment and the page took priority; the judging order puts concurrency correctness first. Not built.
 
 ## D13. Tests and load tools
 Vitest, calling the app over HTTP with `fetch` against the Docker replica set, one fresh database per test file. k6 for load tests with a p95 threshold. CI starts the same replica set with Docker.
 
-## D14. Single deployable (planned)
-Express serves the built UI: one service, one URL.
+## D14. Single deployable
+Express serves the page: one service, one URL. The page has no build step (D26), so the deploy is `npm ci` and `node src/server.js`.
 
 ## D15. Iterate, naive first
 Iteration 0 was deliberately naive so the race test failed and the failure became evidence. Each iteration is a git tag with a performance record. Evidence: see docs/ITERATIONS.md.

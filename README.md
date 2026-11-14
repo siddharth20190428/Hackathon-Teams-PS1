@@ -14,17 +14,17 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Create team, leave, remove member, leader succession, last member deletes the team | Done |
 | Invite codes (expiry, regenerate, hidden from public views) | Done |
 | Looking-for-teammates board | Done for the first page (20 teams); cursor pagination not built |
-| Board p95 under 200 ms at 100 users | Met in all 5 runs with the board cache (p95 39 to 42 ms); without it, the same code lands between 145 and 207 ms. Local, one machine. See [PERFORMANCE.md](PERFORMANCE.md) |
+| Board p95 under 200 ms at 100 users | Met with the board cache (p95 39 to 42 ms; 44 to 47 ms after authentication was added); without the cache, the same code lands between 145 and 207 ms. Local, one machine. See [docs/LOAD_TEST_REPORT.md](docs/LOAD_TEST_REPORT.md) |
+| Write paths under load (join, create) | Correct in every run (invariants held, no contested team over its seats). p95 under 200 ms with realistic pauses (join 73.5 ms, create 99.5 ms); misses it when 100 users never pause (saturation at about 150 writes per second on 2 shared cores) |
 | Join requests (request, list, accept, decline, cancel) | Done |
 | Real authentication | Done: email and password (scrypt), signed session token in an httpOnly cookie or Bearer header |
 | Idempotency keys on every write, audit log per team | Done |
 | Rate limits, input validation (zod) | Done: in-memory limits on login, auth and invite-code guesses; strict schemas |
 | Live board updates (SSE) | Done: a "board changed" signal; the client re-reads the board |
-| Deployment (Render + Atlas), smoke test | Config and script written; not yet run against a live URL. See [docs/DEPLOY.md](docs/DEPLOY.md) |
-| Web page (plain JavaScript, served by the API): sign in, board with live updates, create team, join with code, ask to join, manage your team | Done; checked in a real browser against a stub API, not yet against the real server |
+| Deployment (Render + Atlas), smoke test | Done: https://hackathon-teams.onrender.com ; `scripts/smoke.js` passes against it. See [docs/DEPLOY.md](docs/DEPLOY.md) |
+| Web page (plain JavaScript, served by the API): sign in, board with live updates, create team, join with code, ask to join, manage your team | Done; checked in a real browser, against a stub API and against the running server |
 | Teammate suggestions | Not built |
 | CI | Workflow included; first run to be confirmed |
-| Live deployment | Not deployed yet |
 
 ## Quick start
 
@@ -143,12 +143,24 @@ src/requestCleanup.js  Voiding join requests when people join or teams are delet
 src/boardCache.js   In-process cache for the board response
 scripts/seed.js     Seed data and invariant check
 load/board.js       k6 load test
-test/               Vitest suites (race, join, leave, invite)
+test/               Vitest suites (race, join, leave, invite, requests, idempotency, audit, auth, events, ...)
+src/auth.js         Passwords (scrypt), signed session tokens, register and login
+src/validation.js   zod schemas for request bodies
+src/rateLimit.js    In-memory rate limiter
+src/boardEvents.js  Server-sent events hub for live board updates
+public/             The web page (plain JavaScript and CSS, no build step)
+load/mixed.js       k6 write-path load test (reads, joins, creates)
+scripts/load-fixtures.js, scripts/verify-load.js   Prepare and check a write-path load run
+scripts/smoke.js    User journey against a deployed URL
+render.yaml         Render blueprint (one free web service)
 ```
 
 ## More documentation
 
-- [DESIGN.md](DESIGN.md): how races are prevented, data model, trade-offs.
+- [docs/DESIGN_DOC.md](docs/DESIGN_DOC.md): the design document (start here).
+- [docs/LOAD_TEST_REPORT.md](docs/LOAD_TEST_REPORT.md): the load-test report.
+- [docs/DEPLOY.md](docs/DEPLOY.md): deployment (Render and Atlas).
+- [DESIGN.md](DESIGN.md): how races are prevented, data model, trade-offs (long form).
 - [DECISIONS.md](DECISIONS.md): the decisions and the evidence behind them.
 - [TESTING.md](TESTING.md): test strategy, inventory, how to run.
 - [PERFORMANCE.md](PERFORMANCE.md): load-test method, every run, honest caveats.

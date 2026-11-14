@@ -42,11 +42,11 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## Web page check
 
-The page itself has no automated test in the repository. It was checked by hand in a real browser (Chromium, driven by a script) against a stub API with the same response shapes: sign-up validation message, live board growth after another user's action, wrong invite code, create team, leader view, accept a request, new invite code, two-click leave, sign out and a bad sign-in, on desktop and phone widths, with a name containing HTML to confirm it is shown as text. No script errors and no Content-Security-Policy violations. It has not yet been run against the real server and database.
+The page itself has no automated test in the repository. It was checked by hand in a real browser (Chromium, driven by a script) against a stub API with the same response shapes: sign-up validation message, live board growth after another user's action, wrong invite code, create team, leader view, accept a request, new invite code, two-click leave, sign out and a bad sign-in, on desktop and phone widths, with a name containing HTML to confirm it is shown as text. No script errors and no Content-Security-Policy violations. It was then clicked through by hand against the running server and the deployed site.
 
 ## Deployment smoke test
 
-`scripts/smoke.js` runs the user journey over a public URL: wake the service, register, session cookie on `/me`, 401 without a session, live stream opens and delivers an event after a write (proves the proxy does not buffer it), create team, join by invite code, wrong code refused, team on the board, audit log with both actors, bad login refused. Run: `BASE_URL=https://... node scripts/smoke.js`. It has not been run against a live URL yet.
+`scripts/smoke.js` runs the user journey over a public URL: wake the service, register, session cookie on `/me`, 401 without a session, live stream opens and delivers an event after a write (proves the proxy does not buffer it), create team, join by invite code, wrong code refused, team on the board, audit log with both actors, bad login refused. Run: `BASE_URL=https://... node scripts/smoke.js`. It passes against https://hackathon-teams.onrender.com .
 
 ## Load-time correctness check
 

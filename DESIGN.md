@@ -9,16 +9,21 @@ Ten thousand people form teams of a limited size at the same moment. The hard re
 ## 2. Architecture
 
 ```
-Client -> Express (src/app.js, thin routes)
+Browser (public/: plain JavaScript page)
+   |  session cookie, live event stream
+   v
+Express (src/app.js): security headers -> static page -> register/login
+      -> session check -> idempotency -> board-cache invalidation + event publish -> thin routes
+              |                                   |
+              v                                   v
+   src/teams.js, src/requests.js          src/boardEvents.js (SSE hub)
+   (every state change, in transactions)
               |
               v
-          src/teams.js  (every state change lives here)
-              |
-              v
-          MongoDB replica set (transactions, unique indexes)
+   MongoDB replica set (transactions, unique indexes)
 ```
 
-Route handlers only parse input and call one function in `src/teams.js`. That keeps the concurrency logic in one place.
+Route handlers only parse input and call one function in `src/teams.js` or `src/requests.js`. That keeps the concurrency logic in one place.
 
 ## 3. Data model
 
@@ -28,7 +33,7 @@ Route handlers only parse input and call one function in `src/teams.js`. That ke
 | `teams` | `hackathonId`, `name`, `leaderId`, `maxSize`, `memberCount`, `openSeats`, `inviteCode`, `inviteExpiresAt`, `lookingForTeammates`, `version`, `createdAt` | unique `inviteCode` (partial); partial board index on `(hackathonId, createdAt desc, _id desc)` for open teams |
 | `memberships` | `hackathonId`, `teamId`, `userId`, `role`, `joinedAt` | unique `(hackathonId, userId)`; `(teamId, joinedAt)` |
 | `joinRequests` | `hackathonId`, `teamId`, `userId`, `status` (pending, accepted, declined, cancelled), `createdAt`, `decidedAt` | unique `(teamId, userId)` where status is pending; `(teamId, status, createdAt)`; `(hackathonId, userId, status)` |
-| `users` | seed data only; no API yet | `_id` |
+| `users` | `_id`, `email`, `passwordHash` (scrypt), `displayName`, `skills`, `utcOffsetMinutes` | `_id`; unique `email` |
 
 `memberCount` and `openSeats` are stored on the team and kept in step by the same atomic update, so the board never has to count rows.
 
@@ -115,8 +120,8 @@ The board query filters open teams in one hackathon, sorted newest first, limite
 
 ## 9. Not built yet
 
-Real authentication, rate limits, input validation with a schema library, live updates, teammate suggestions, the UI, deployment.
+Teammate suggestions (cut for time, DECISIONS D12), cursor pagination of the board, a chaos test that kills the server mid-transaction, an automated browser test, and anything that needs more than one instance (see section 8).
 
 ## 10. With one more week
 
-Change streams for multi-instance live updates, a shared rate-limit store, optimistic UI with rollback, tracing and metrics, a chaos suite that kills the server mid-transaction, and a spike on embedding members in the team document so the seat claim becomes a single-document update.
+Change streams for multi-instance live updates and cache invalidation, a shared rate-limit store, server-side sessions so a login can be revoked, tracing and metrics, teammate suggestions, a chaos suite that kills the server mid-transaction, and a spike on embedding members in the team document so the seat claim becomes a single-document update.

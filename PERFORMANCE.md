@@ -52,11 +52,23 @@ All times are in milliseconds. Every run had a 0% error rate. v1 and v3 did not 
 
 Patch 0012 adds an `AsyncLocalStorage` context and a request id to every request, and an extra write per mutation; reads skip the idempotency step. Three 30 s board runs after it gave p95 of 38.1 to 39.3 ms at 5,400 to 5,570 requests per second, the same as v6 (39.0 to 42.4 ms), so the read path shows no measurable cost. The write paths were not load-tested; they cost one extra database write each.
 
+## After authentication (v9)
+
+Patch 0015 puts a session check in front of every route: cookie or Bearer parsing, one HMAC-SHA256 with a constant-time compare, and a JSON parse. Three 30 s board runs with a minted token (`TOKEN=$(npm run -s token -- u1) LABEL=v9-1 npm run load`):
+
+| Run | Requests per second | p50 | p90 | p95 | p99 | max | Threshold |
+|---|---|---|---|---|---|---|---|
+| v9 auth, cache on, run 1 | 4503.5 | 18.6 | 37.8 | 46.7 | 65.9 | 499.7 | passed (about 77% margin) |
+| v9 auth, cache on, run 2 | 4477.3 | 18.6 | 38.1 | 47.2 | 68.6 | 236.8 | passed (about 76% margin) |
+| v9 auth, cache on, run 3 | 4691.9 | 18.0 | 35.9 | 44.2 | 63.7 | 252.3 | passed (about 78% margin) |
+
+Compared with v8 (p95 38.1 to 39.3 ms at about 5,400 to 5,570 requests per second), authentication added about 7 ms of p95 (+18%) and cost about 15% of throughput. My prediction of no visible change was wrong. Not optimized: memoizing verified tokens would add cache logic to a security path for a margin we already have.
+
 ## Caveats
 
 - One machine, two cores, everything shared. A reviewer's hardware will differ.
 - Atlas M0 caps operations at about 100 per second, so the deployed site cannot serve this load directly. The p95 evidence in this report is local.
-- Only the board read was load-tested, with no writes. Every write invalidates the cache, so a write-heavy mix will see a lower hit rate. The test also hits a single cache key, which is the best case for a cache. A mixed read-and-join scenario has not been run.
+- The board-only runs above are read-only and hit a single cache key, the best case for a cache. The mixed read, join and create runs further down include writes (every write invalidates the cache); in the realistic profile the board p95 was still 6.6 ms.
 - At 5,000 or more requests per second, k6 and Node compete for the same two cores, so the cache-on latency (about 16 ms median) is mostly CPU contention on this machine, not database time.
 
 ## Write-path load test (procedure)
@@ -75,7 +87,7 @@ Half of the joins aim at the hot teams, so many users fight for the same few sea
 
 ### Results: stress test (no think time)
 
-Every run was started from a fresh seed and fresh fixtures. `verify-load` passed on all four runs (all invariants held; each of the 5 hot teams had 1 seat and exactly 1 joiner won it). No 5xx in any run. Mix 70% read, 25% join, 5% create; times in ms.
+Every run was started from a fresh seed and fresh fixtures. `verify-load` passed on all four runs (all invariants held; no hot team took more joiners than its 1 open seat). For the 100-user run the per-team lines were kept: each of the 5 hot teams went from 1 open seat to 0 with exactly 1 joiner. No 5xx in any run. Mix 70% read, 25% join, 5% create; times in ms.
 
 | Users | req/s | board p95 | join p95 | create p95 |
 |---|---|---|---|---|
@@ -104,6 +116,6 @@ Joins: 303 won a seat, 439 refused (team full or already in a team). Creates: 13
 
 ## Next
 
-1. Add a mixed read-and-join scenario to measure the cache under writes.
-2. Re-measure after authentication (v9): every read now verifies one HMAC token. Run with `TOKEN=$(npm run -s token -- u1) LABEL=v9-1 npm run load`.
-3. Run a deployed smoke test (Atlas M0 plus the cache).
+1. Find the cause of the write p99 of about 260 to 270 ms (write-conflict retries on hot teams, or database checkpoints). Not investigated.
+2. Run the write-path test on separate machines for the load generator and the database, to measure the app without k6 competing for the cores.
+3. The deployed site (free instance, Atlas M0) gets a smoke test only (`scripts/smoke.js`); it is not load-tested.
