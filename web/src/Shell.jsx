@@ -11,6 +11,7 @@ import { PeopleList } from './components/PeopleList.jsx';
 import { MyTeam } from './components/MyTeam.jsx';
 import { Icon } from './components/Icon.jsx';
 import { Button } from './components/ui.jsx';
+import { ProfileDialog } from './components/ProfileDialog.jsx';
 
 function useWide() {
   const query = '(min-width: 960px)';
@@ -31,6 +32,22 @@ export function Shell() {
   const wide = useWide();
   const [tab, setTab] = useState('teams');
   const [requested, setRequested] = useState(() => new Set());
+  const [editing, setEditing] = useState(false);
+  const [nudged, setNudged] = useState(() => {
+    try {
+      return sessionStorage.getItem('skills-nudge') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const dismissNudge = () => {
+    setNudged(true);
+    try {
+      sessionStorage.setItem('skills-nudge', '1');
+    } catch {
+      /* storage can be blocked; the nudge then returns on reload, which is fine */
+    }
+  };
 
   const myTeamId = data.mine?.team?._id ?? null;
   const current = wide && tab === 'team' ? 'teams' : tab;
@@ -64,7 +81,18 @@ export function Shell() {
 
   return (
     <div className="shell">
-      <Header live={data.live} />
+      <Header live={data.live} onEditProfile={() => setEditing(true)} />
+      {user.skills.length === 0 && !nudged && (
+        <div className="nudge" role="note">
+          <Icon name="sparkle" />
+          <span>Add your skills to get better teammate matches.</span>
+          <Button size="sm" onClick={() => setEditing(true)}>Add skills</Button>
+          <button type="button" className="icon-btn" aria-label="Dismiss" onClick={dismissNudge}>
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+      )}
+      {editing && <ProfileDialog onClose={() => setEditing(false)} />}
       {data.loadFailed && !data.board && (
         <div className="banner" role="alert">
           <Icon name="alert" /> Could not load the board.

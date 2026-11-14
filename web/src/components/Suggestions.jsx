@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { messageFor, percent, utcLabel } from '../format.js';
+import { messageFor, percent, tzShort } from '../format.js';
 import { Avatar, Button, Skills, SkillChip, Spinner } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 
 // Ranked teammates for this team. Score = skill complement x 0.6 + time-zone overlap x 0.4;
 // "How is this scored?" shows the numbers for each person, so the ranking is never a black box.
-export function Suggestions({ teamId, memberCount }) {
+export function Suggestions({ teamId, memberCount, profileKey }) {
   const [state, setState] = useState({ status: 'loading' });
 
   const load = useCallback(async () => {
@@ -22,7 +22,7 @@ export function Suggestions({ teamId, memberCount }) {
   // Reload when the team changes (someone joined or left).
   useEffect(() => {
     load();
-  }, [load, memberCount]);
+  }, [load, memberCount, profileKey]);
 
   const { data } = state;
   return (
@@ -77,7 +77,7 @@ export function Suggestions({ teamId, memberCount }) {
                       <div>
                         <dt>Time zone ({percent(s.timezone.score)}%)</dt>
                         <dd>
-                          {utcLabel(s.user.utcOffsetMinutes)}, {Math.abs(s.timezone.differenceHours)} h from your team, about {s.timezone.overlapHours} h of shared working time
+                          {tzShort(s.user.utcOffsetMinutes)}, {Math.abs(s.timezone.differenceHours)} h from your team, about {s.timezone.overlapHours} h of shared working time
                         </dd>
                       </div>
                       <div>

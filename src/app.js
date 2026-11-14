@@ -25,10 +25,11 @@ import {
   registerUser,
   loginUser,
   getProfile,
+  updateProfile,
 } from './auth.js';
 import { createRateLimiter } from './rateLimit.js';
 import { getPeople, getSuggestions } from './people.js';
-import { parse, registerSchema, loginSchema, createTeamSchema } from './validation.js';
+import { parse, registerSchema, loginSchema, createTeamSchema, updateProfileSchema } from './validation.js';
 import {
   createJoinRequest,
   listJoinRequests,
@@ -182,6 +183,15 @@ export function createApp(db, client, options = {}) {
     }
     next();
   });
+
+  // Edit your own profile. The generic hook below drops the board cache and publishes an event,
+  // so the People tab and any team you lead update live.
+  app.patch(
+    '/me',
+    wrap(async (req, res) => {
+      res.json({ user: await updateProfile(db, client, req.userId, parse(updateProfileSchema, req.body)) });
+    }),
+  );
 
   app.post(
     '/hackathons/:hid/teams',

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Avatar, Empty, Skills, SkeletonList } from './ui.jsx';
 import { Icon } from './Icon.jsx';
-import { utcLabel, skillLabel } from '../format.js';
+import { tzShort, skillLabel } from '../format.js';
 
 export function PeopleList({ people, meId }) {
   const [query, setQuery] = useState('');
@@ -36,7 +36,7 @@ export function PeopleList({ people, meId }) {
               <div className="person-card__main">
                 <h3>{p.displayName}</h3>
                 <p className="muted small">
-                  <Icon name="clock" size={13} /> {utcLabel(p.utcOffsetMinutes)}
+                  <Icon name="clock" size={13} /> {tzShort(p.utcOffsetMinutes)}
                 </p>
               </div>
               <Skills skills={p.skills} />

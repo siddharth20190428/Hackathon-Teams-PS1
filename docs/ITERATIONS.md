@@ -101,6 +101,11 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** Vite + React app in `web/` (auth with skills and time zone, tabs for teams and people, a side panel for your team on wide screens and a third tab on phones, invite code with copy and regenerate, join requests, suggestions with a "How is this scored?" breakdown, confirm dialogs, toasts, skeleton loading, dark mode, reduced motion). Express serves `dist/`. `public/` is removed.
 **Checked:** bundled and driven in Chromium against a stub API: login error, register (with an XSS-style name), live pill, live board update, optimistic ask with rollback, create team, suggestions, optimistic decline with rollback, regenerate with a confirm dialog and Escape, phone width (no horizontal scroll), arrow keys on the tabs, leave, sign out. Not yet run against the real server.
 
+### v17: edit your profile
+**Why:** skills and time zone were set once at sign-up and could never change, so suggestions were only as good as a first guess, and accounts made before the new form had no skills at all.
+**What:** `PATCH /me` (name, skills, time zone; any subset, at least one; strict schema, so email, password and ids cannot be sent; skills de-duplicated). It runs in one transaction with an audit entry (`PROFILE_UPDATED`, field names only) and with the copy of the name stored on teams the user leads (`leaderName`), so the board never shows an old name. The generic write hook drops the board cache and publishes a live event, so People and suggestions update at once. In the app: an "Edit profile" dialog (click your name), and a dismissible prompt while you have no skills.
+**Checked:** the dialog and prompt in a browser against the stub. The 8 new API tests (`test/profile.test.js`) are written but not yet run against a database.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.

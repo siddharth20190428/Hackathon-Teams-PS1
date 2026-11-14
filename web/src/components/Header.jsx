@@ -4,7 +4,7 @@ import { Icon } from './Icon.jsx';
 
 const LIVE_TEXT = { live: 'Live', connecting: 'Connecting', off: 'Offline' };
 
-export function Header({ live }) {
+export function Header({ live, onEditProfile }) {
   const { user, logout } = useAuth();
   return (
     <header className="header">
@@ -17,8 +17,10 @@ export function Header({ live }) {
           <span className="pill__dot" /> {LIVE_TEXT[live]}
         </span>
         <div className="header__user">
-          <Avatar id={user.id} name={user.displayName} size="sm" />
-          <span className="header__name">{user.displayName}</span>
+          <button type="button" className="profile-btn" onClick={onEditProfile} aria-label="Edit profile" title="Edit profile">
+            <Avatar id={user.id} name={user.displayName} size="sm" />
+            <span className="header__name">{user.displayName}</span>
+          </button>
           <button type="button" className="icon-btn" onClick={logout} aria-label="Sign out" title="Sign out">
             <Icon name="logout" />
           </button>

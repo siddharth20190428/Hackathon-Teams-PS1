@@ -3,6 +3,7 @@ import { api, routes } from '../api.js';
 import { useAction } from '../useAction.js';
 import { useToast } from '../toasts.jsx';
 import { useConfirm } from '../confirm.jsx';
+import { useAuth } from '../auth.jsx';
 import { formatDateTime } from '../format.js';
 import { Avatar, Button, Field, Seats, SkeletonList } from './ui.jsx';
 import { Icon } from './Icon.jsx';
@@ -106,6 +107,7 @@ export function MyTeam({ mine, meId, refresh, onDeclined }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [act, pending] = useAction();
+  const { user } = useAuth();
   const [hidden, setHidden] = useState(() => new Set()); // requests declined optimistically
 
   if (!mine) return <SkeletonList rows={2} />;
@@ -235,7 +237,7 @@ export function MyTeam({ mine, meId, refresh, onDeclined }) {
         </section>
       )}
 
-      {!full && <Suggestions teamId={team._id} memberCount={team.memberCount} />}
+      {!full && <Suggestions teamId={team._id} memberCount={team.memberCount} profileKey={`${user.skills.join()}|${user.utcOffsetMinutes}`} />}
 
       <Button variant="danger-ghost" icon="door" onClick={leave} loading={pending}>Leave team</Button>
     </div>

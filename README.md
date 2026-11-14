@@ -93,7 +93,7 @@ Every `POST` and `DELETE` also needs an `Idempotency-Key` header (8 to 128 chara
 
 `GET /hackathons/:hid/people` lists people who are in no team (newest first, 20, no email), cached and refreshed like the board. `GET /teams/:id/suggestions` (members of the team only, `?limit=` up to 20, default 10) ranks free people for the team: `score = 0.6 x skill complement + 0.4 x time-zone overlap`. Each suggestion carries its parts and plain-language reasons, and the response carries the method. See DECISIONS D12 and D27.
 
-`GET /hackathons/:hid/my-team` returns your team, your role and the members with names; for the leader it also has the invite code and the pending join requests. The web app is served from `/` (built by `npm run build` into `dist/`; source in `web/`). `npm run dev:web` starts a Vite dev server on :5173 that proxies the API to :3000.
+`PATCH /me` edits your own name, skills and time zone (any subset; email, password and ids are rejected). `GET /hackathons/:hid/my-team` returns your team, your role and the members with names; for the leader it also has the invite code and the pending join requests. The web app is served from `/` (built by `npm run build` into `dist/`; source in `web/`). `npm run dev:web` starts a Vite dev server on :5173 that proxies the API to :3000.
 
 `GET /hackathons/:hid/board/events` is a server-sent event stream. Events: `ready` once on connect, then `board` with `{"version":n}` whenever a successful write may have changed the board (bursts are merged into one event, about a 100 ms window). It carries no data: re-read `GET /hackathons/:hid/board`. A client that reconnects or sees a version gap simply re-reads. Limits: 5 streams per user (429), 2,000 in total (503). Single instance only.
 

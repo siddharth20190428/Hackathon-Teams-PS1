@@ -51,13 +51,77 @@ export function utcLabel(minutes = 0) {
   return `UTC${sign}${Math.floor(abs / 60)}${m ? `:${String(m).padStart(2, '0')}` : ''}`;
 }
 
-// Offsets offered at sign-up: every half hour, plus the visitor's own if it is unusual.
-export function offsetOptions(detected) {
-  const list = [];
-  for (let m = -720; m <= 840; m += 30) list.push(m);
-  if (!list.includes(detected)) list.push(detected);
+// Places that use each offset, so people pick "India" instead of working out "UTC+5:30".
+// Daylight saving moves a place to the next offset in summer, so some places appear twice.
+const REGIONS = {
+  '-720': 'Baker Island',
+  '-660': 'American Samoa',
+  '-600': 'Hawaii',
+  '-570': 'Marquesas Islands',
+  '-540': 'Alaska',
+  '-480': 'Los Angeles, Vancouver',
+  '-420': 'Denver, Phoenix, Los Angeles (summer)',
+  '-360': 'Chicago, Mexico City, Denver (summer)',
+  '-300': 'New York, Toronto, Bogota, Chicago (summer)',
+  '-240': 'Halifax, Santiago, Caracas, New York (summer)',
+  '-210': 'Newfoundland',
+  '-180': 'Sao Paulo, Buenos Aires',
+  '-120': 'South Georgia',
+  '-60': 'Azores, Cape Verde',
+  0: 'London, Lisbon, Accra, Reykjavik',
+  60: 'Berlin, Paris, Lagos, London (summer)',
+  120: 'Cairo, Johannesburg, Athens, Berlin (summer)',
+  180: 'Moscow, Nairobi, Riyadh, Istanbul',
+  210: 'Tehran',
+  240: 'Dubai, Baku, Muscat',
+  270: 'Kabul',
+  300: 'Karachi, Tashkent',
+  330: 'India, Sri Lanka',
+  345: 'Nepal',
+  360: 'Dhaka, Almaty',
+  390: 'Myanmar',
+  420: 'Bangkok, Jakarta, Hanoi',
+  480: 'Singapore, Beijing, Perth, Manila',
+  525: 'Eucla (Australia)',
+  540: 'Tokyo, Seoul',
+  570: 'Adelaide, Darwin',
+  600: 'Sydney, Brisbane, Vladivostok',
+  630: 'Lord Howe Island',
+  660: 'Noumea, Solomon Islands',
+  690: 'Norfolk Island',
+  720: 'Auckland, Fiji',
+  765: 'Chatham Islands',
+  780: 'Tonga, Samoa',
+  840: 'Kiritimati',
+};
+export const regionLabel = (minutes) => REGIONS[minutes] ?? '';
+// First place only, for lists where space is short.
+export const regionShort = (minutes) => regionLabel(minutes).split(',')[0].replace(/ \(summer\)$/, '');
+export const tzLabel = (minutes) => {
+  const region = regionLabel(minutes);
+  return region ? `${utcLabel(minutes)} · ${region}` : utcLabel(minutes);
+};
+export const tzShort = (minutes) => {
+  const region = regionShort(minutes);
+  return region ? `${utcLabel(minutes)} · ${region}` : utcLabel(minutes);
+};
+
+// Offsets offered in the picker: the places above, plus the visitor's own and the saved one
+// if they are unusual (seeded users can have any offset).
+export function offsetOptions(detected, current = detected) {
+  const list = Object.keys(REGIONS).map(Number);
+  for (const extra of [detected, current]) if (!list.includes(extra)) list.push(extra);
   return list.sort((a, b) => a - b);
 }
+
+// What the browser reports, for example "Asia/Calcutta".
+export const detectedZoneName = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone?.replace(/_/g, ' ') ?? '';
+  } catch {
+    return '';
+  }
+};
 
 export const detectedOffset = () => {
   const minutes = -new Date().getTimezoneOffset();

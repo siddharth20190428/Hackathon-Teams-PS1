@@ -20,6 +20,20 @@ export const registerSchema = z
   })
   .strict();
 
+// Profile edit: any of these, at least one. Same rules as registration; skills are de-duplicated.
+export const updateProfileSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(60).optional(),
+    skills: z
+      .array(z.string().trim().min(1).max(30))
+      .max(10)
+      .transform((list) => [...new Set(list)])
+      .optional(),
+    utcOffsetMinutes: z.number().int().min(-720).max(840).optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Send at least one field to change' });
+
 export const loginSchema = z.object({ email, password: z.string().min(1).max(128) }).strict();
 
 export const createTeamSchema = z.object({ name: z.string().trim().min(1).max(60) }).strict();

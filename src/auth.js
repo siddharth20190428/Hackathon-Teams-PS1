@@ -2,6 +2,8 @@ import { createHmac, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'no
 import { promisify } from 'node:util';
 import { httpError } from './errors.js';
 import { getContext } from './context.js';
+import { runTransaction } from './tx.js';
+import { audit } from './audit.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -140,6 +142,28 @@ export async function registerUser(db, { email, password, displayName, skills = 
     throw err;
   }
   return publicUser(user);
+}
+
+// Edits the caller's own profile. The name is copied onto the teams they lead (leaderName), so
+// the user, those teams and the audit entry change in one transaction or not at all.
+export async function updateProfile(db, client, userId, patch) {
+  return runTransaction(client, async (session) => {
+    const user = await db
+      .collection('users')
+      .findOneAndUpdate({ _id: userId }, { $set: patch }, { returnDocument: 'after', session });
+    if (!user) throw httpError(404, 'NOT_FOUND');
+    if (patch.displayName !== undefined) {
+      await db
+        .collection('teams')
+        .updateMany({ leaderId: userId }, { $set: { leaderName: patch.displayName } }, { session });
+    }
+    await audit(db, session, {
+      action: 'PROFILE_UPDATED',
+      targetUserId: userId,
+      summary: { fields: Object.keys(patch).sort() },
+    });
+    return publicUser(user);
+  });
 }
 
 export async function loginUser(db, { email, password }) {

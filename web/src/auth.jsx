@@ -41,6 +41,10 @@ export function AuthProvider({ children }) {
       user: state.user,
       login: (body) => enter('/auth/login', body),
       register: (body) => enter('/auth/register', body),
+      updateProfile: async (patch) => {
+        const { user } = await api('PATCH', '/me', patch);
+        setState((s) => ({ ...s, user }));
+      },
       logout: async () => {
         await api('POST', '/auth/logout').catch(() => {});
         setState({ status: 'anon', user: null });

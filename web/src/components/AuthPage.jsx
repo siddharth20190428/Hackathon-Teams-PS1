@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { useAuth } from '../auth.jsx';
-import { SKILLS, skillLabel, offsetOptions, detectedOffset, utcLabel, messageFor } from '../format.js';
+import { detectedOffset, messageFor } from '../format.js';
+import { SkillsPicker, TimeZoneSelect } from './ProfileFields.jsx';
 import { Button, Field } from './ui.jsx';
 import { Icon } from './Icon.jsx';
 
@@ -11,11 +12,8 @@ export function AuthPage() {
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [skills, setSkills] = useState([]);
-  const detected = detectedOffset();
-  const [offset, setOffset] = useState(detected);
+  const [offset, setOffset] = useState(detectedOffset);
   const creating = mode === 'register';
-
-  const toggle = (skill) => setSkills((s) => (s.includes(skill) ? s.filter((x) => x !== skill) : [...s, skill]));
 
   async function submit(e) {
     e.preventDefault();
@@ -87,28 +85,8 @@ export function AuthPage() {
 
           {creating && (
             <>
-              <fieldset className="field">
-                <legend>Your skills</legend>
-                <div className="toggles">
-                  {SKILLS.map((s) => (
-                    <label key={s} className="toggle">
-                      <input type="checkbox" checked={skills.includes(s)} onChange={() => toggle(s)} />
-                      <span>{skillLabel(s)}</span>
-                    </label>
-                  ))}
-                </div>
-                <p className="field__hint">Teams are matched with people who add what they are missing.</p>
-              </fieldset>
-              <Field label="Your time zone" htmlFor={`${uid}-tz`} hint="Used to find teammates who work at the same hours.">
-                <select id={`${uid}-tz`} value={offset} onChange={(e) => setOffset(Number(e.target.value))}>
-                  {offsetOptions(detected).map((m) => (
-                    <option key={m} value={m}>
-                      {utcLabel(m)}
-                      {m === detected ? ' (detected)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <SkillsPicker value={skills} onChange={setSkills} />
+              <TimeZoneSelect id={`${uid}-tz`} value={offset} onChange={setOffset} />
             </>
           )}
 
