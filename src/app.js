@@ -1,5 +1,6 @@
 import express from 'express';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import {
   createTeam,
@@ -383,10 +384,7 @@ export function createApp(db, client, options = {}) {
     wrap(async (req, res) => {
       // Like the board, one cached body serves everyone.
       const hackathonId = req.params.hid;
-      const body = await boardCache.get(`${hackathonId}:people:${PEOPLE_LIMIT}`, async () =>
-        JSON.stringify(await getPeople(db, { hackathonId, limit: PEOPLE_LIMIT })),
-      );
-      res.type('json').send(body);
+      sendCached(req, res, await cachedView(`${hackathonId}:people:${PEOPLE_LIMIT}`, () => getPeople(db, { hackathonId, limit: PEOPLE_LIMIT })));
     }),
   );
 
@@ -398,15 +396,36 @@ export function createApp(db, client, options = {}) {
     }),
   );
 
+  // The board and people lists are the same for everyone, so each is rendered once per cache
+  // fill: the JSON, its gzip and its ETag are computed together and shared by every reader.
+  // A read then costs one header write and one buffer send, and the compressed answer is a
+  // quarter of the size, which matters most on a slow link or a small host.
+  const cachedView = (key, load) =>
+    boardCache.get(key, async () => {
+      const json = Buffer.from(JSON.stringify(await load()));
+      return {
+        json,
+        gzip: json.length >= 512 ? gzipSync(json, { level: 6 }) : null,
+        etag: `W/"${createHash('sha1').update(json).digest('base64url').slice(0, 20)}"`,
+      };
+    });
+  function sendCached(req, res, view) {
+    res.set({ ETag: view.etag, 'Cache-Control': 'private, no-cache', Vary: 'Accept-Encoding' });
+    res.type('json');
+    // res.send answers 304 by itself when If-None-Match matches the ETag set above.
+    if (view.gzip && req.acceptsEncodings('gzip', 'identity') === 'gzip') {
+      res.set('Content-Encoding', 'gzip');
+      return res.send(view.gzip);
+    }
+    return res.send(view.json);
+  }
+
   app.get(
     '/hackathons/:hid/board',
     wrap(async (req, res) => {
       // The board has no per-user content, so one cached body serves everyone.
       const hackathonId = req.params.hid;
-      const body = await boardCache.get(`${hackathonId}:${BOARD_LIMIT}`, async () =>
-        JSON.stringify(await getBoard(db, { hackathonId, limit: BOARD_LIMIT })),
-      );
-      res.type('json').send(body);
+      sendCached(req, res, await cachedView(`${hackathonId}:${BOARD_LIMIT}`, () => getBoard(db, { hackathonId, limit: BOARD_LIMIT })));
     }),
   );
 

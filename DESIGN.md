@@ -95,6 +95,8 @@ A checker (`src/invariants.js`) runs after every concurrency test and at the end
 
 ## 6. Read path
 
+Each cached list is rendered once per fill (JSON, gzip, ETag; D30), so a read is a header write and a buffer send, and an unchanged list is a 304.
+
 The board query filters open teams in one hackathon, sorted newest first, limited to 20. A partial index on exactly that filter turned a collection scan of 2,000 documents into an index scan of 20 and raised throughput about three times (see PERFORMANCE.md). The board and the public team view exclude invite fields. The serialized board response is cached in process for 2 seconds, shared between concurrent requests and invalidated by every successful write (DECISIONS.md D20). Not built: cursor pagination.
 
 The "people looking for a team" list is the people with no membership in the hackathon, newest registrations first. It is an aggregation over `users` with a `$lookup` into `memberships` on the `(hackathonId, userId)` index, in the order of the `users_newest` index, and it stops as soon as 20 free people are found; the response goes through the same cache and invalidation as the board. Teammate suggestions score a bounded pool (500) of free people with the formula in DECISIONS D12; the pool is people who bring at least one skill the team lacks, topped up with anyone free, so the request stays cheap and the best possible match could in principle sit outside the pool (D27).

@@ -121,6 +121,11 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** see D29. Also fixed: the final error handler turned any error raised outside a route into a 500; it now keeps the status and code of errors we raise on purpose.
 **Checked:** 12 new tests in `test/validation.test.js`, written but not yet run against a database. Two existing tests changed to match the stricter behaviour (`invite`: non-string codes; `suggestions`: `?limit=nonsense`).
 
+### v21: gzip and ETag, rendered once per cache fill
+**Why:** the live URL measured p95 about 1,000 ms at 100 users, against a target of 200 ms. The server-side evidence is good (44 to 47 ms locally), so the gap is the free-tier host and the network. The cheap, honest lever is to send fewer bytes and do less work per read.
+**What:** see D30. The board and people responses carry a precomputed gzip and ETag; unchanged lists answer 304.
+**Checked:** the size and cost of gzip on a realistic board (6.2 KB to 0.5 KB, 0.07 ms). The 6 new tests are not yet run against a database. **Not yet measured:** the effect on the live URL. That is a k6 run after deploying.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.
