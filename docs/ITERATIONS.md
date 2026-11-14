@@ -131,6 +131,11 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** D31. `load/board.js` gained `THINK_MS`, so the live board can be measured with 100 users who pause (about 100 requests per second) as well as with users who never pause.
 **Checked:** syntax and one new assertion in `test/myteam.test.js` (not yet run against a database). **Not measured:** the effect of the static change on its own.
 
+### v22.1: staggered start in the board load script
+**Why:** the realistic live run (100 users, 1 s pauses) gave p95 247 ms against a target of 200 ms with a median of 73 ms, the network round trip. All users start in the same instant, and that first burst of 100 queued requests is about 3.6% of the run, which sits at the p95 cutoff.
+**What:** `STAGGER_MS` in `load/board.js`: each user's first request waits a random 0 to STAGGER_MS. Both numbers go in the report.
+**Not measured yet:** the staggered figure.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.

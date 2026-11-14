@@ -83,7 +83,15 @@ The single-user run shows the network alone costs about 70 ms on average and 131
 | 1 user, 10 s | 12.0 | 82.7 | 90.5 | 200.1 | 383.4 |
 | 100 users, 30 s | 155.1 | 636.2 | 1201.9 | 1499.8 | 1592.2 |
 
-Throughput did not move (155 against 159 requests per second), so the limit is not bytes on the wire; it is the work the free instance can do per second, about 6 ms of its CPU share per request. 100 / 155 = 645 ms, measured 636 ms. The p95 differs between the two runs by 200 ms with no change that should affect it, which is the run-to-run noise on a shared host: the 1-user p99 alone swung from 170 to 200 ms. v21 is still worth having (smaller answers, 304s for browsers) but it did not change this number, and I expected it to.
+Throughput did not move (155 against 159 requests per second), so the limit is not bytes on the wire; it is the work the free instance can do per second, about 6 ms of its CPU share per request. 100 / 155 = 645 ms, measured 636 ms. The p95 differs between the two runs by 200 ms with no change that should affect it, which is the run-to-run noise on a shared host: the 1-user p99 alone swung from 170 to 200 ms. **Realistic profile on the live URL (v21; 100 users, 30 s, about 1 s between a user's reads):**
+
+| Run | Requests/s | avg | p50 | p90 | p95 | p99 | max | Threshold |
+|---|---|---|---|---|---|---|---|---|
+| all users start at once | 87.7 | 98.7 | 73.0 | 159.4 | 247.2 | 524.5 | 650.6 | failed (p95 under 200 ms) |
+
+The median (73 ms) is the network round trip alone (the 1-user median was 75.5 ms), so at this load the instance adds almost nothing for most requests and the p95 is a tail effect. The instance is not saturated here (88 requests per second against a ceiling of about 155). Two things feed the tail: the first second, when all 100 users send a request at the same instant and queue (about 3.6% of the run, which sits right at the p95 cutoff; the maximum of 651 ms is about what 100 queued requests at 6 ms each produce), and ordinary jitter on a shared host and a public network (the lone user's p99 was already 200 ms). `STAGGER_MS=1000` in `load/board.js` spreads the first requests over a second; the staggered figure is recorded below when measured. Both are reported because only one of them is flattering.
+
+v21 is still worth having (smaller answers, 304s for browsers) but it did not change this number, and I expected it to.
 
 ## 6. Where my predictions were wrong
 

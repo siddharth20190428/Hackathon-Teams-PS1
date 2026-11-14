@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import exec from 'k6/execution';
 
 const BASE = __ENV.BASE_URL || 'http://localhost:3000';
 const HACKATHON = __ENV.HACKATHON_ID || 'h1';
@@ -8,6 +9,11 @@ const TOKEN = __ENV.TOKEN;
 // once. With THINK_MS=1000, 100 users make about 100 requests a second, like 100 people with
 // the board open and refreshing about once a second.
 const THINK_MS = Number(__ENV.THINK_MS || 0);
+// By default all virtual users fire their first request at the same instant, which is a
+// stampede of VUS requests queued behind each other (a few percent of the whole run, enough to
+// move p95). STAGGER_MS=1000 makes each user's first request wait a random 0 to 1000 ms, so
+// users arrive over a second, as real ones do. Report both numbers.
+const STAGGER_MS = Number(__ENV.STAGGER_MS || 0);
 if (!TOKEN) throw new Error('set TOKEN, e.g. TOKEN=$(npm run -s token -- u1) npm run load');
 
 export const options = {
@@ -26,6 +32,7 @@ export const options = {
 };
 
 export default function () {
+  if (STAGGER_MS > 0 && exec.vu.iterationInScenario === 0) sleep((Math.random() * STAGGER_MS) / 1000);
   const res = http.get(`${BASE}/hackathons/${HACKATHON}/board`, {
     headers: { authorization: `Bearer ${TOKEN}` },
   });
