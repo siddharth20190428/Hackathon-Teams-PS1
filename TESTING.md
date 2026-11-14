@@ -70,3 +70,15 @@ Board pagination (T23) and the chaos test (T26). Live updates were tested throug
 ## CI
 
 `.github/workflows/ci.yml` starts the same replica set with Docker, runs `npm test`, runs the race test for 20 rounds, and seeds the database to check invariants. Confirm the first run is green before relying on it.
+
+## Chaos test (`npm run chaos`)
+
+`scripts/chaos.js` starts the real server, fires 40 concurrent joins at 3 teams with 1 to 2 open seats, kills the server with SIGKILL 15 to 135 ms in, restarts it and retries every unanswered request with the same Idempotency-Key. It then checks that every invariant holds, that no team is over capacity, and that every final answer agrees with the database (201 means a membership row exists, TEAM_FULL means it does not). It runs in CI with 2 rounds.
+
+What it found:
+- A real bug (v24): a retry of a join that had filled the team was answered TEAM_FULL although the seat was the caller's. Now ALREADY_IN_TEAM, with a regression test in `test/join.test.js`.
+
+What it measured (local, 4 rounds, all passed):
+- Recovery after a hard kill is 30 to 90 s on the contended teams: 30 s is the idempotency "abandoned key" window, the rest is MongoDB holding the dead process's open transactions until it aborts them (about 60 s).
+- 9 of 32 joins in flight at the kill had committed but were answered ALREADY_IN_TEAM on retry, because the idempotency response is stored outside the join transaction. Nobody is lost or double-seated, but the person is told "conflict" for a join that worked. Fix (not done): write the idempotency record in the same transaction.
+

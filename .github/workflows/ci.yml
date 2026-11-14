@@ -25,5 +25,7 @@ jobs:
       - run: npm test
       - name: Race tests, 20 rounds
         run: RACE_ROUNDS=20 npm run test:race
+      - name: Chaos test, kill the server mid-join (2 rounds)
+        run: CHAOS_ROUNDS=2 npm run chaos
       - name: Seed 10,000 users and check invariants
         run: node scripts/seed.js
