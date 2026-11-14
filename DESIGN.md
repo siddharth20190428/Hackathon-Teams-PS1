@@ -9,7 +9,7 @@ Ten thousand people form teams of a limited size at the same moment. The hard re
 ## 2. Architecture
 
 ```
-Browser (public/: plain JavaScript page)
+Browser (web/: React app, built to dist/)
    |  session cookie, live event stream
    v
 Express (src/app.js): security headers -> static page -> register/login
@@ -95,13 +95,15 @@ A checker (`src/invariants.js`) runs after every concurrency test and at the end
 
 The board query filters open teams in one hackathon, sorted newest first, limited to 20. A partial index on exactly that filter turned a collection scan of 2,000 documents into an index scan of 20 and raised throughput about three times (see PERFORMANCE.md). The board and the public team view exclude invite fields. The serialized board response is cached in process for 2 seconds, shared between concurrent requests and invalidated by every successful write (DECISIONS.md D20). Not built: cursor pagination.
 
+The "people looking for a team" list is the people with no membership in the hackathon, newest registrations first. It is an aggregation over `users` with a `$lookup` into `memberships` on the `(hackathonId, userId)` index, in the order of the `users_newest` index, and it stops as soon as 20 free people are found; the response goes through the same cache and invalidation as the board. Teammate suggestions score a bounded pool (500) of free people with the formula in DECISIONS D12; the pool is people who bring at least one skill the team lacks, topped up with anyone free, so the request stays cheap and the best possible match could in principle sit outside the pool (D27).
+
 ## 7. Security as built
 
 - Invite codes: 10 characters from a 32-symbol alphabet (50 bits from `crypto.randomBytes`), unique, expiring, regenerable, accepted case-insensitively. They never appear in the board or the public team view; only the leader can read them.
 - Non-string code inputs, including `{ "$ne": null }`, are rejected before reaching the database.
 - Joining by team id was removed because it bypassed invite codes.
 - Leader-only actions check leadership inside the atomic filter.
-- Web page: plain JavaScript and CSS in `public/`, served by the same Express app, so there is one service to deploy and no build step. All user text enters the page as text nodes, never HTML, and a Content-Security-Policy forbids inline and foreign scripts, so injected markup could not run. Every write carries a fresh Idempotency-Key and its button is disabled while it runs. The board refreshes on every live event (a cached read); "your team" is not cached, so it refreshes only after your own actions, on reconnect, when the tab regains focus, and every 15 s while you are in a team (about 1 read per 15 s per user, not one per event per user).
+- Web app: React (Vite) in `web/`, built to `dist/` and served by the same Express app, so there is still one service to deploy; the build runs on the host (`npm ci --include=dev && npm run build`). React escapes all user text, and a Content-Security-Policy forbids inline styles and foreign scripts, so injected markup could not run (checked in a browser with a name containing an `<img onerror>` tag). Hashed files in `dist/assets` are cached for a year, `index.html` is never cached. Every write carries a fresh Idempotency-Key and its button is disabled while it runs. The board refreshes on every live event (a cached read); "your team" is not cached, so it refreshes only after your own actions, on reconnect, when the tab regains focus, and every 15 s while you are in a team (about 1 read per 15 s per user, not one per event per user).
 - Live updates: `GET /hackathons/:hid/board/events` (SSE) sends a version-only "board changed" signal. The write path invalidates the board cache first and publishes second, so a client that re-reads after an event never receives the old body. Bursts are coalesced (100 ms), streams are capped per user and in total, and a client that stops reading is dropped. Every open page re-reads after an event, and the cache turns that into one database query. Limits: single instance (another process has its own streams), and the signal is sent for every hackathon (the app has one), not only the one that changed.
 - Authentication: email and password, scrypt hashes, a stateless HMAC-signed session token (`{sub, exp}`) in an httpOnly, SameSite=Lax cookie or a Bearer header. Unknown email and wrong password give the same 401, and an unknown email still pays a hash check. CSRF: SameSite=Lax plus the required `Idempotency-Key` custom header on every write.
 - Validation: zod `.strict()` schemas at the edge; bodies capped at 10 KB; operator objects such as `{"$ne":null}` never reach a query.
@@ -120,8 +122,8 @@ The board query filters open teams in one hackathon, sorted newest first, limite
 
 ## 9. Not built yet
 
-Teammate suggestions (cut for time, DECISIONS D12), cursor pagination of the board, a chaos test that kills the server mid-transaction, an automated browser test, and anything that needs more than one instance (see section 8).
+Cursor pagination of the board, a chaos test that kills the server mid-transaction, an automated browser test, and anything that needs more than one instance (see section 8).
 
 ## 10. With one more week
 
-Change streams for multi-instance live updates and cache invalidation, a shared rate-limit store, server-side sessions so a login can be revoked, tracing and metrics, teammate suggestions, a chaos suite that kills the server mid-transaction, and a spike on embedding members in the team document so the seat claim becomes a single-document update.
+Change streams for multi-instance live updates and cache invalidation, a shared rate-limit store, server-side sessions so a login can be revoked, tracing and metrics, a chaos suite that kills the server mid-transaction, and a spike on embedding members in the team document so the seat claim becomes a single-document update.

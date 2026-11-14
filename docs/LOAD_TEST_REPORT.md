@@ -9,6 +9,7 @@ Goal: p95 under 200 ms with 100 concurrent users, on 10,000 users and 2,000 team
 | Is the board read under 200 ms p95 at 100 users? | Yes: 44 to 47 ms with the cache and authentication (39 to 42 ms before authentication). Without the cache it is 145 to 207 ms, with a pass margin as thin as 2%. |
 | Are joins and team creation under 200 ms p95 at 100 users? | Yes with realistic pauses (about 1 s between actions): join 73.5 ms, create 99.5 ms. No when users never pause: join 707 ms, create 860 ms. |
 | Did correctness survive the load? | Yes. After each of five write-path runs, all invariants held and no contested team took more joiners than it had seats; in the two runs whose per-team output I kept, each of the five one-seat teams went from 1 open seat to 0 with exactly one new member. No 5xx in any run. |
+| Does the live URL meet it? | No. On the free instance, one user alone sees p95 of 131 ms (network included), and 100 users who never pause get 159 requests per second and p95 of 1,002 ms. The p95 evidence in this report is server-side and local; see section 5. |
 | What limits throughput? | About 150 writes per second on this machine: two shared cores, with the server, MongoDB and k6 all on them. |
 
 ## 2. Method
@@ -65,7 +66,15 @@ In all five runs (`w1`, the 10, 25 and 50 user sweep runs, and the realistic run
 
 ## 5. Deployed smoke check (not a load test)
 
-`scripts/smoke.js` against https://hackathon-teams.onrender.com, from the development Codespace over the internet, on a free instance that was already awake: `/me` 146 ms, board 150 ms, register 728 ms (scrypt on a small CPU share), create team 829 ms. The live update stream delivered an event through the host's proxy. The deployed site is not load-tested: the free instance has a small CPU share and Atlas M0 allows about 100 operations per second, so such numbers would describe the free tiers.
+`scripts/smoke.js` against https://hackathon-teams.onrender.com, from the development Codespace over the internet, on a free instance that was already awake: `/me` 146 ms, board 150 ms, register 728 ms (scrypt on a small CPU share), create team 829 ms. The live update stream delivered an event through the host's proxy. 
+**Board endpoint on the live URL** (`load/board.js`, from the same Codespace, token from `/auth/register`):
+
+| Run | Requests/s | avg | p95 | p99 | max |
+|---|---|---|---|---|---|
+| 1 user, 10 s | 13.1 | 75.7 | 130.9 | 170.5 | 180.7 |
+| 100 users, 30 s | 159.3 | 619.7 | 1002.2 | 1587.2 | 1691.4 |
+
+The single-user run shows the network alone costs about 70 ms on average and 131 ms at p95 from this location. The 100-user run is queueing on the free instance's small CPU share: 100 / 159 = 629 ms, measured 620 ms. The same code reaches 4,500 to 5,500 requests per second locally, so the difference is the hosting tier, not the code or the query. The requirement is met on the server side by the local runs in section 3; the live URL is a demo on free tiers and does not meet it for 100 users who never pause. Any other number for the live URL would also depend on where the reader is.
 
 ## 6. Where my predictions were wrong
 
@@ -81,7 +90,7 @@ In all five runs (`w1`, the 10, 25 and 50 user sweep runs, and the realistic run
 - One machine, two cores, shared by the server, the database and the load generator. k6 itself uses a large share of the CPU, so the application's real capacity is higher than measured; a reviewer's hardware will differ.
 - The stress runs used 14,000 to 15,500 iterations against a pool of 4,000 users, so the pool wrapped and some refusals are "already in a team" from reused users. This does not affect the invariant checks.
 - Write p99 in the realistic profile is about 260 to 270 ms, above the target even though the target is p95. The cause is not measured (candidates: write-conflict retries on the hot teams, database checkpoints).
-- Atlas M0 and the free web instance cannot serve the graded load, so the p95 evidence is local.
+- Atlas M0 and the free web instance cannot serve the graded load (measured in section 5), so the p95 evidence is local.
 
 ## 8. Reproduce
 

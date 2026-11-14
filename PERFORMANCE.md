@@ -64,6 +64,17 @@ Patch 0015 puts a session check in front of every route: cookie or Bearer parsin
 
 Compared with v8 (p95 38.1 to 39.3 ms at about 5,400 to 5,570 requests per second), authentication added about 7 ms of p95 (+18%) and cost about 15% of throughput. My prediction of no visible change was wrong. Not optimized: memoizing verified tokens would add cache logic to a security path for a margin we already have.
 
+## Live URL (free Render instance), board endpoint
+
+Measured from the development Codespace over the internet with `load/board.js` and a token from `/auth/register`, against https://hackathon-teams.onrender.com (free instance, Atlas M0):
+
+| Run | Requests per second | avg | p50 | p90 | p95 | p99 | max | Threshold |
+|---|---|---|---|---|---|---|---|---|
+| 1 user, 10 s (`live-rtt`) | 13.1 | 75.7 | 69.8 | 77.3 | 130.9 | 170.5 | 180.7 | n/a |
+| 100 users, 30 s (`live-100`) | 159.3 | 619.7 | 689.6 | 902.5 | 1002.2 | 1587.2 | 1691.4 | failed |
+
+Reading: one user alone sees p95 of 130.9 ms, so the network between the Codespace and the host already uses about two thirds of the 200 ms budget (average 75.7 ms). With 100 users who never pause the instance serves 159 requests per second, and 100 / 159 = 629 ms is the average latency, measured 620 ms: it is queueing on a small CPU share, not a slow query (the board is a cached read, about 0.4 ms of work per request on the two-core machine used for the local runs). The same code on the local machine reaches 4,500 to 5,500 requests per second. So the live URL does not meet p95 under 200 ms at 100 users who never pause, and no hosting change would fix the network share of that budget for a distant reader; the p95 evidence for this project is the server-side, local runs above. 0 errors in both runs.
+
 ## Caveats
 
 - One machine, two cores, everything shared. A reviewer's hardware will differ.

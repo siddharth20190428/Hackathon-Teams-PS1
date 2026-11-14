@@ -31,6 +31,9 @@ export async function ensureCoreIndexes(db) {
   await db.collection('joinRequests').createIndex({ teamId: 1, status: 1, createdAt: 1 });
   await db.collection('joinRequests').createIndex({ hackathonId: 1, userId: 1, status: 1 });
 
+  // People who are in no team: newest registrations first (the "people looking for a team" list).
+  await db.collection('users').createIndex({ createdAt: -1, _id: -1 }, { name: 'users_newest' });
+
   // Invite codes are unique across teams. Partial, so documents without a code are fine.
   await db.collection('teams').createIndex(
     { inviteCode: 1 },

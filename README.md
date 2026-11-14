@@ -22,8 +22,9 @@ Stack: Node, Express 5, MongoDB (native driver, multi-document transactions), Vi
 | Rate limits, input validation (zod) | Done: in-memory limits on login, auth and invite-code guesses; strict schemas |
 | Live board updates (SSE) | Done: a "board changed" signal; the client re-reads the board |
 | Deployment (Render + Atlas), smoke test | Done: https://hackathon-teams.onrender.com ; `scripts/smoke.js` passes against it. See [docs/DEPLOY.md](docs/DEPLOY.md) |
-| Web page (plain JavaScript, served by the API): sign in, board with live updates, create team, join with code, ask to join, manage your team | Done; checked in a real browser, against a stub API and against the running server |
-| Teammate suggestions | Not built |
+| React web app (Vite build, served by the API): sign in, live board of teams and people, create team, join with code, ask to join (optimistic, with rollback), manage your team, teammate suggestions with the score explained; works on a phone and with the keyboard, light and dark | Done; checked in a real browser against a stub API. Not yet checked against the running server |
+| Teammate suggestions (ranked by complementary skills and time zone, scoring explained) | Done, on the API and in the app |
+| "People looking for a team" list | Done on the API: `GET /hackathons/:hid/people`. Not on the page yet |
 | CI | Workflow included; first run to be confirmed |
 
 ## Quick start
@@ -90,7 +91,9 @@ Every route except `/healthz`, `POST /auth/register`, `POST /auth/login` and `PO
 
 Every `POST` and `DELETE` also needs an `Idempotency-Key` header (8 to 128 characters: letters, digits, `_ . : -`). Send the same key when retrying a request: the first answer is stored and returned again (with `Idempotent-Replayed: true`) and nothing runs twice. The same key with a different request gets 422. Keys are per user and expire after 24 hours. Every response carries an `X-Request-Id` header (send your own `X-Request-Id` to choose it); the audit log records it.
 
-`GET /hackathons/:hid/my-team` returns your team, your role and the members with names; for the leader it also has the invite code and the pending join requests. The web page is served from `/` (files in `public/`, no build step).
+`GET /hackathons/:hid/people` lists people who are in no team (newest first, 20, no email), cached and refreshed like the board. `GET /teams/:id/suggestions` (members of the team only, `?limit=` up to 20, default 10) ranks free people for the team: `score = 0.6 x skill complement + 0.4 x time-zone overlap`. Each suggestion carries its parts and plain-language reasons, and the response carries the method. See DECISIONS D12 and D27.
+
+`GET /hackathons/:hid/my-team` returns your team, your role and the members with names; for the leader it also has the invite code and the pending join requests. The web app is served from `/` (built by `npm run build` into `dist/`; source in `web/`). `npm run dev:web` starts a Vite dev server on :5173 that proxies the API to :3000.
 
 `GET /hackathons/:hid/board/events` is a server-sent event stream. Events: `ready` once on connect, then `board` with `{"version":n}` whenever a successful write may have changed the board (bursts are merged into one event, about a 100 ms window). It carries no data: re-read `GET /hackathons/:hid/board`. A client that reconnects or sees a version gap simply re-reads. Limits: 5 streams per user (429), 2,000 in total (503). Single instance only.
 
@@ -148,7 +151,9 @@ src/auth.js         Passwords (scrypt), signed session tokens, register and logi
 src/validation.js   zod schemas for request bodies
 src/rateLimit.js    In-memory rate limiter
 src/boardEvents.js  Server-sent events hub for live board updates
-public/             The web page (plain JavaScript and CSS, no build step)
+src/suggestions.js  Teammate scoring (pure functions)
+src/people.js       People with no team, and teammate suggestions for a team
+web/                React app (Vite). `npm run build` writes dist/, which the API serves
 load/mixed.js       k6 write-path load test (reads, joins, creates)
 scripts/load-fixtures.js, scripts/verify-load.js   Prepare and check a write-path load run
 scripts/smoke.js    User journey against a deployed URL

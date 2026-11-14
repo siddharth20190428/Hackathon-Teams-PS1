@@ -7,7 +7,7 @@ services:
     runtime: node
     plan: free
     region: singapore # pick the region closest to your Atlas cluster
-    buildCommand: npm ci --omit=dev
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: node src/server.js
     healthCheckPath: /healthz
     autoDeploy: true

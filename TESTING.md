@@ -21,7 +21,7 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 
 ## What is covered
 
-105 tests in 14 files.
+122 tests in 15 files.
 
 | File | Tests |
 |---|---|
@@ -39,6 +39,7 @@ If every suite fails with a hook timeout after about 30 seconds, MongoDB is not 
 | `test/rateLimit.test.js` | Unit tests, no database: window limits with a fake clock, per-key counting, bounded key count, 429 with `Retry-After` |
 | `test/events.test.js` | Hub unit tests, no database: a burst of publishes becomes one event with the latest version; total and per-user stream caps and freeing a slot on close; a client that is not reading is dropped. T25 over HTTP: 401 without a session; the stream opens with a `ready` event; a new team wakes the stream and the board read right after shows it; 15 parallel creates send fewer events than writes, versions never go backwards, and the board then shows all 15; a failed write sends no event; the per-user cap returns 429 and frees on close |
 | `test/myteam.test.js` | Needs a session. Empty for someone with no team. The leader sees the team, named members, the invite code and pending requests. A member sees the team without the invite code or requests (the code appears nowhere in the response). The view follows leaving and leader succession. The page is served at `/` with the security headers, the API stays behind the session, unknown paths are 401 for anonymous callers and a JSON 404 when signed in |
+| `test/suggestions.test.js` | Scoring unit tests, no database: weights sum to 1, clock distance wraps around midnight, median offset, team profile, perfect and repeated skills, half new skills, time-zone share falls to 0 at 8 hours, a candidate with no skills, ranking with deterministic tie-breaks and a limit. T24 over HTTP: free people ranked by skills and time zone with the reasons; people in a team and the team's own members are left out; no email or password hash in any response; only team members can ask (403), 404 for unknown teams, 401 without a session; the limit parameter; the people list is free people only, newest first; a person who joins leaves the list at once and the team's changed skills change the ranking; a new account appears in the list at once |
 
 ## Web page check
 
@@ -54,7 +55,7 @@ The page itself has no automated test in the repository. It was checked by hand 
 
 ## Not covered yet
 
-Board pagination (T23), suggestions (T24), and the chaos test (T26). Live updates were tested through the HTTP stream only; no browser client has been run against them yet.
+Board pagination (T23) and the chaos test (T26). Live updates were tested through the HTTP stream only; no browser client has been run against them yet.
 
 ## Known limits of these tests
 

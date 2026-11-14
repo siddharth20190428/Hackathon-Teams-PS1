@@ -90,6 +90,17 @@ The project was built in small patches. Each one was run against the tests, and 
 **What:** `GET /hackathons/:hid/my-team` (the page could not show your team otherwise), a plain JavaScript page served by the API, security headers with a Content-Security-Policy. React was dropped for a no-build page (DECISIONS D26).
 **Result:** 6 new tests, 105 in total. The first real run was 104 of 105: the one failure was my own wrong assertion (anonymous requests to unknown paths get 401, not 404, because the session check runs first; fixed in patch 0022). The page was checked in a browser against a stub API and then by hand against the real server. A design flaw avoided: refreshing "your team" on every live event would send one uncached read per open page per event.
 
+## v15: teammate suggestions and the people list (patch 0024)
+
+**Why:** a re-read of the problem statement showed that suggestions are a must-have (I had labelled them optional), and that the board must show people as well as teams.
+**What:** `GET /teams/:id/suggestions` (score = 0.6 skill complement + 0.4 time-zone overlap, each part and reason returned, members only, rate limited) and `GET /hackathons/:hid/people` (cached like the board, refreshed on every write and on every sign-up). Pure scoring functions in `src/suggestions.js`; queries in `src/people.js`.
+**Result:** 17 new tests, 122 in total: the 10 scoring unit tests pass in isolation; the 7 HTTP tests are not yet run against a database. Not on the page yet: that waits for the React rewrite.
+
+### v16: React UI
+**Why:** the problem statement asks for a React UI and for suggestions and people on the page; the plain page covered neither.
+**What:** Vite + React app in `web/` (auth with skills and time zone, tabs for teams and people, a side panel for your team on wide screens and a third tab on phones, invite code with copy and regenerate, join requests, suggestions with a "How is this scored?" breakdown, confirm dialogs, toasts, skeleton loading, dark mode, reduced motion). Express serves `dist/`. `public/` is removed.
+**Checked:** bundled and driven in Chromium against a stub API: login error, register (with an XSS-style name), live pill, live board update, optimistic ask with rollback, create team, suggestions, optimistic decline with rollback, regenerate with a confirm dialog and Escape, phone width (no horizontal scroll), arrow keys on the tabs, leave, sign out. Not yet run against the real server.
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.
@@ -97,4 +108,4 @@ The project was built in small patches. Each one was run against the tests, and 
 
 ## Next
 
-The UI, then deployment.
+Team-scoped live events, minimum team size, the chaos test, validation of the remaining inputs.

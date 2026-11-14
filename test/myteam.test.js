@@ -1,10 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setup } from './helpers.js';
 
 describe('my team and the web page', () => {
   let env;
+  let staticDir;
   beforeAll(async () => {
-    env = await setup();
+    // A tiny stand-in for the built web app, so the test does not need `npm run build`.
+    staticDir = mkdtempSync(join(tmpdir(), 'web-'));
+    mkdirSync(join(staticDir, 'assets'));
+    writeFileSync(join(staticDir, 'index.html'), '<!doctype html><title>Team Finder</title><div id="root"></div>');
+    writeFileSync(join(staticDir, 'assets', 'app-abc123.js'), 'console.log(1)');
+    env = await setup({ staticDir });
     const users = ['alice', 'bob', 'carol'].map((id) => ({
       _id: id,
       email: `${id}@example.test`,
@@ -14,6 +23,7 @@ describe('my team and the web page', () => {
   });
   afterAll(async () => {
     await env.teardown();
+    rmSync(staticDir, { recursive: true, force: true });
   });
 
   const mine = (user) => env.call('GET', '/hackathons/h1/my-team', user);
@@ -75,6 +85,9 @@ describe('my team and the web page', () => {
     expect(page.headers.get('content-security-policy')).toContain("script-src 'self'");
     expect(page.headers.get('x-content-type-options')).toBe('nosniff');
     expect(page.headers.get('x-frame-options')).toBe('DENY');
+    expect(page.headers.get('cache-control')).toBe('no-cache');
+    const asset = await env.raw('GET', '/assets/app-abc123.js');
+    expect(asset.headers.get('cache-control')).toContain('immutable');
 
     const api = await env.raw('GET', '/hackathons/h1/board');
     expect(api.status).toBe(401); // the API is still behind the session

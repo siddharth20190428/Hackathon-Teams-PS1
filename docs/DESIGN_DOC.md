@@ -58,7 +58,7 @@ Target: p95 under 200 ms with 100 concurrent users. The board read went from 612
 - Sessions cannot be revoked early, and the per-account login limit lets someone lock out a victim for 15 minutes.
 - The deployed site is on free tiers: it sleeps when idle (30 to 60 s to wake), and Atlas M0 caps operations at about 100 per second, so the deployment is smoke-tested, not load-tested.
 - Write p99 is about 260 to 270 ms in the realistic profile; I have not found the cause.
-- Not built: teammate suggestions (cut for time, D12), board pagination (the board shows the 20 newest teams), a chaos test that kills the server mid-transaction, an automated browser test.
+- Not built: board pagination (the board shows the 20 newest teams), a chaos test that kills the server mid-transaction, an automated browser test.
 
 ## 8. How it was built
 
@@ -66,4 +66,4 @@ Naive first, then one measured change per iteration, each a git tag (v0 to v13) 
 
 ## 9. With one more week
 
-Change streams for multi-instance cache and live updates; server-side sessions; the embedded-members spike; teammate suggestions; a chaos suite; running the load generator and the database on separate machines.
+Change streams for multi-instance cache and live updates; server-side sessions; the embedded-members spike; scoring suggestions inside the database; a chaos suite; running the load generator and the database on separate machines.

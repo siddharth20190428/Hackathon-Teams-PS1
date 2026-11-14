@@ -27,6 +27,7 @@ import {
   getProfile,
 } from './auth.js';
 import { createRateLimiter } from './rateLimit.js';
+import { getPeople, getSuggestions } from './people.js';
 import { parse, registerSchema, loginSchema, createTeamSchema } from './validation.js';
 import {
   createJoinRequest,
@@ -37,6 +38,7 @@ import {
 } from './requests.js';
 
 const BOARD_LIMIT = 20;
+const PEOPLE_LIMIT = 20;
 
 // Defaults. Tests pass `rateLimits: false` (off) or tighter numbers in `options`.
 const DEFAULT_LIMITS = {
@@ -44,6 +46,7 @@ const DEFAULT_LIMITS = {
   loginPerEmail: { windowMs: 15 * 60_000, max: 10 }, // login attempts per account
   codePerUser: { windowMs: 60_000, max: 10 }, // join-by-code attempts per user
   codePerIp: { windowMs: 60_000, max: 300 }, // and per IP, which may be a shared network
+  suggestionsPerUser: { windowMs: 60_000, max: 20 }, // teammate suggestions (the heaviest read)
 };
 
 export function createApp(db, client, options = {}) {
@@ -91,8 +94,16 @@ export function createApp(db, client, options = {}) {
     next();
   });
 
-  // The web page: plain files in /public, no build step. It talks to the API below.
-  app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
+  // The web page: the React app built by `npm run build` into dist/. It talks to the API below.
+  // Hashed asset files are cached for a year; index.html is never cached, so a deploy is picked up at once.
+  const staticDir = options.staticDir ?? fileURLToPath(new URL('../dist', import.meta.url));
+  app.use(
+    express.static(staticDir, {
+      setHeaders(res, file) {
+        res.setHeader('Cache-Control', file.includes(`${'/'}assets${'/'}`) ? 'public, max-age=31536000, immutable' : 'no-cache');
+      },
+    }),
+  );
 
   const wrap = (fn) => (req, res) =>
     fn(req, res).catch((err) => {
@@ -113,6 +124,9 @@ export function createApp(db, client, options = {}) {
     wrap(async (req, res) => {
       const user = await registerUser(db, parse(registerSchema, req.body));
       setSessionCookie(res, tokens, user.id, { secure });
+      // A new person appears in the "people looking for a team" list.
+      boardCache.invalidate();
+      boardEvents.publish();
       res.status(201).json({ user });
     }),
   );
@@ -300,6 +314,26 @@ export function createApp(db, client, options = {}) {
     '/hackathons/:hid/my-team',
     wrap(async (req, res) => {
       res.json(await getMyTeam(db, { hackathonId: req.params.hid, userId: req.userId }));
+    }),
+  );
+
+  app.get(
+    '/hackathons/:hid/people',
+    wrap(async (req, res) => {
+      // Like the board, one cached body serves everyone.
+      const hackathonId = req.params.hid;
+      const body = await boardCache.get(`${hackathonId}:people:${PEOPLE_LIMIT}`, async () =>
+        JSON.stringify(await getPeople(db, { hackathonId, limit: PEOPLE_LIMIT })),
+      );
+      res.type('json').send(body);
+    }),
+  );
+
+  app.get(
+    '/teams/:id/suggestions',
+    limitBy('suggestionsPerUser', (req) => `user:${req.userId}`),
+    wrap(async (req, res) => {
+      res.json(await getSuggestions(db, { teamId: req.params.id, actorId: req.userId, limit: req.query.limit }));
     }),
   );
 
