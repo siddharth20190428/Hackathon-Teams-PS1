@@ -80,5 +80,5 @@ What it found:
 
 What it measured (local, 4 rounds, all passed):
 - Recovery after a hard kill is 30 to 90 s on the contended teams: 30 s is the idempotency "abandoned key" window, the rest is MongoDB holding the dead process's open transactions until it aborts them (about 60 s).
-- 9 of 32 joins in flight at the kill had committed but were answered ALREADY_IN_TEAM on retry, because the idempotency response is stored outside the join transaction. Nobody is lost or double-seated, but the person is told "conflict" for a join that worked. Fix (not done): write the idempotency record in the same transaction.
+- Across the 4 kills, 32 joins ended up committed; for 9 of them the retry was answered ALREADY_IN_TEAM instead of the original success, because the idempotency response is stored outside the join transaction. Nobody is lost or double-seated, but the person is told "conflict" for a join that worked. Fix (not done): write the idempotency record in the same transaction.
 

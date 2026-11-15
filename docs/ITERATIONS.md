@@ -145,6 +145,8 @@ The project was built in small patches. Each one was run against the tests, and 
 **Why:** a person with no account who tries to sign in sees "Wrong email or password", which is correct (the server answers the same for an unknown email and a wrong password, so nobody can probe which emails exist) but gives a first-time user no next step.
 **What:** after a failed sign-in the error also says "No account yet? Create one", which switches to the sign-up form. It appears on every failed sign-in, so it reveals nothing about the email.
 
+(Wording correction, v28.2: earlier entries said "9 of 32 joins in flight at the kill". The figure is 9 of the 32 joins that ended up committed across the 4 chaos rounds, not all of them were in flight at the kill.)
+
 ## Decisions outside the patches
 
 - **Dropped `mongodb-memory-server`.** Its `mongod` binary ran but failed to start in the codespace within its timeout. Development, tests and load runs use a Docker replica set.

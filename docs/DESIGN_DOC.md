@@ -38,7 +38,7 @@ Three independent guards (conditional update, transaction, unique index) each co
 
 - **Live p95 is not reliably under 200 ms.** Locally the board is 44 to 47 ms p95 at 100 users. On the free-tier URL, three identical runs gave 247, 196 and 344 ms: run-to-run noise on a shared host and public network is larger than the gap to the target, so I do not claim a pass there.
 - **A hard crash stalls joins on contended teams for 30 to 90 s** (the 30 s idempotency abandoned-key window, plus MongoDB holding the dead process's open transactions). Nothing is lost or double-seated.
-- **A join can commit but be reported as a conflict.** In the chaos test 9 of 32 joins in flight at the kill committed, and the retry said `ALREADY_IN_TEAM`. The idempotency response is stored outside the join transaction.
+- **A join can commit but be reported as a conflict.** In the chaos test (4 kills), 32 joins ended up committed; for 9 of them the retry said `ALREADY_IN_TEAM` instead of replaying the success. The idempotency response is stored outside the join transaction.
 - One instance only; no pagination (board shows the newest 20 teams); free-tier site sleeps when idle.
 
 ## With one more week
